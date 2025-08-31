@@ -1,7 +1,7 @@
 # Craxy-Auto
 Automated recon script to perform subdomain enumeration, live host discovery, port scanning, vulnerability scanning, parameter discovery, directory brute-forcing, and screenshots.
 
-# 🛠 Prerequisites
+# Prerequisites
 
 Run the Recon Tools Setup repo first to install dependencies and tools.
 Ensure Go binaries are in PATH.
@@ -10,19 +10,19 @@ Ensure Go binaries are in PATH.
 
 **Clone this repository:**
 ```
-git clone <repo-url>
-cd <repo-folder>
+git clone https://github.com/ninja-jsi/Craxy-Auto.git
+cd Craxy-Auto
 ```
 
 **Run the recon script:**
 ```
-chmod +x full-recon.sh
-./full-recon.sh target.com
+chmod +x reckon.sh
+./reckon.sh target.com
 ```
 
 ```
-📂 Output Structure
-target.com-recon/
+**Output Structure**
+target.com-reckon/
  ├── subdomains/        # discovered subdomains
  ├── ports/             # port scan results
  ├── scans/             # nmap & nuclei results
