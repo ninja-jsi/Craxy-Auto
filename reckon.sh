@@ -30,7 +30,7 @@ echo "[+] Checking live hosts..."
 cat $OUTPUT/subdomains/all_subs.txt | httpx -silent -o $OUTPUT/subdomains/live_subs.txt
 
 echo "[+] Port scanning with Naabu..."
-naabu -list $OUTPUT/subdomains/live_subs.txt -p - -o $OUTPUT/ports/naabu.txt &
+naabu -list $OUTPUT/subdomains/live_subs.txt -p- -o $OUTPUT/ports/naabu.txt &
 
 echo "[+] Service detection with Nmap..."
 nmap -T4 -sC -sV -iL $OUTPUT/subdomains/live_subs.txt -oN $OUTPUT/scans/nmap.txt &
@@ -40,9 +40,12 @@ echo "[+] Running nuclei (common templates)..."
 nuclei -l $OUTPUT/subdomains/live_subs.txt -c 50 -rl 100 -tags cves,exposures -o $OUTPUT/scans/nuclei.txt &
 
 echo "[+] Taking screenshots..."
-gowitness file -f $OUTPUT/subdomains/live_subs.txt -P $OUTPUT/screenshots/ --timeout 10 &
-wait
+gowitness file -f $OUTPUT/subdomains/live_subs.txt -P $OUTPUT/screenshots/ --timeout 10
 
+echo "[+] Directory Bruteforcing..."
+for port in $(cat ./ports/naabu.txt); do
+    ffuf -u http://$DOMAIN:$port/FUZZ -w /usr/share/wordlists/dirb/common.txt -o ffuf_$port.json
+done
 
 # -----------------------------------
 # Parameter Discovery (for XSS/SQLi)
