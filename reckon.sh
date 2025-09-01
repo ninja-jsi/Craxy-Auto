@@ -30,6 +30,7 @@ echo "[+] Checking live hosts..."
 cat $OUTPUT/subdomains/all_subs.txt | httpx -silent -o $OUTPUT/subdomains/live_subs.txt
 
 echo "[+] Port scanning with Naabu..."
+sed -i 's#^https\?://##' $OUTPUT/subdomains/live_subs.txt
 naabu -list $OUTPUT/subdomains/live_subs.txt -p- -o $OUTPUT/ports/naabu.txt &
 
 echo "[+] Service detection with Nmap..."
