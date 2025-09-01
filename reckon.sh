@@ -40,7 +40,7 @@ echo "[+] Running nuclei (common templates)..."
 nuclei -l $OUTPUT/subdomains/live_subs.txt -c 50 -rl 100 -tags cves,exposures -o $OUTPUT/scans/nuclei.txt &
 
 echo "[+] Taking screenshots..."
-gowitness file -f $OUTPUT/subdomains/live_subs.txt -P $OUTPUT/screenshots/ --timeout 10
+gowitness scan file -f  "$OUTPUT/subdomains/live_subs.txt" --screenshot-path "$OUTPUT/screenshots" --timeout 10 
 
 echo "[+] Directory Bruteforcing..."
 for port in $(cat ./ports/naabu.txt); do
