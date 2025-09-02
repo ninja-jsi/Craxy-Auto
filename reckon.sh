@@ -9,6 +9,22 @@
 # gau, waybackurls, gf, feroxbuster
 # ----------------------------
 
+echo "[+] Getting Wordlists..."
+mkdir -p ~/wordlists
+cd ~/wordlists
+
+# Directories
+wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt -O common.txt
+wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-small.txt -O dirs-small.txt
+
+# Subdomains
+wget https://wordlists-cdn.assetnote.io/data/manual/dns/combined.txt -O dns.txt
+
+# Parameters
+wget https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt -O params.txt
+
+
+echo "[+] Starting Automcation Script..."
 if [ -z "$1" ]; then
     echo "Usage: $0 <domain>"
     exit 1
@@ -45,7 +61,7 @@ gowitness scan file -f  "$OUTPUT/subdomains/live_subs.txt" --screenshot-path "$O
 
 echo "[+] Directory Bruteforcing..."
 for port in $(cat ./ports/naabu.txt); do
-    ffuf -u http://$DOMAIN:$port/FUZZ -w /usr/share/wordlists/dirb/common.txt -o ffuf_$port.json
+    ffuf -u http://$DOMAIN:$port/FUZZ -w ~/wordlists/common.txt -o ffuf_$port.json
 done
 
 # -----------------------------------
@@ -71,7 +87,7 @@ wait
 echo "[+] Running directory brute force..."
 
 dirsearch -u https://$DOMAIN -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
-gobuster dir -u https://$DOMAIN -w /usr/share/wordlists/dirb/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
+gobuster dir -u https://$DOMAIN -w ~/wordlists/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
 
 while read url; do
     echo "Scanning $url ..."
