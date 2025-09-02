@@ -53,8 +53,8 @@ echo "[+] Taking screenshots..."
 gowitness scan file -f  "$OUTPUT/subdomains/live_subs.txt" --screenshot-path "$OUTPUT/screenshots" --timeout 10 
 
 echo "[+] Directory Bruteforcing..."
-for port in $(cat ./ports/naabu.txt); do
-    ffuf -u http://$DOMAIN:$port/FUZZ -w ~/wordlists/common.txt -o ffuf_$port.json
+for port in $(cat $OUTPUT/ports/naabu.txt); do
+    ffuf -u http://$DOMAIN:$port/FUZZ -w $OUTPUT/wordlists/common.txt -o ffuf_$port.json
 done
 
 # -----------------------------------
@@ -80,11 +80,11 @@ wait
 echo "[+] Running directory brute force..."
 
 dirsearch -u https://$DOMAIN -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
-gobuster dir -u https://$DOMAIN -w ~/wordlists/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
+gobuster dir -u https://$DOMAIN -w $OUTPUT/wordlists/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
 
 while read url; do
     echo "Scanning $url ..."
-    feroxbuster -u $url -w /usr/share/seclists/Discovery/Web-Content/common.txt -t 50 -o "$OUTPUT/dirs/$(echo $url | sed 's/https\?:\/\///').txt" &
+    feroxbuster -u $url -w $OUTPUT/wordlists/common.txt -t 50 -o "$OUTPUT/dirs/$(echo $url | sed 's/https\?:\/\///').txt" &
 done < $OUTPUT/subdomains/live_subs.txt
 wait
 
