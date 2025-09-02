@@ -24,19 +24,25 @@ BLUE="\e[34m"
 CYAN="\e[36m"
 RESET="\e[0m"
 
-# ASCII Banner
-echo -e "${RED}   ______                  _                       "
-echo -e "${RED}  / ____/___  ____ _____  (_)___  ____ _          "
-echo -e "${YELLOW} / /   / __ \/ __ \`/ __ \/ / __ \/ __ \`/          "
-echo -e "${YELLOW}/ /___/ /_/ / /_/ / /_/ / / / / / /_/ /           "
-echo -e "${GREEN}\____/\____/\__,_/ .___/_/_/ /_/\__, /            "
-echo -e "${GREEN}                /_/             /____/             "
-echo -e "${CYAN}----------------------------------------------------"
-echo -e "${CYAN}  Crazy Auto Recon - Bug Bounty Recon Automation   "
-echo -e "${CYAN}  Version: 1.0 | Author: ninja-jsi            "
-echo -e "${CYAN}----------------------------------------------------${RESET}"
-echo ""
+#!/bin/bash
 
+# Colors
+RED="\e[31m"
+YELLOW="\e[33m"
+GREEN="\e[32m"
+CYAN="\e[36m"
+MAGENTA="\e[35m"
+BOLD="\e[1m"
+RESET="\e[0m"
+
+# Crazy-Auto Banner with Colors
+echo -e "${RED}${BOLD} ::::::::  :::::::::      :::     :::    ::: :::   :::          :::     :::    ::: ::::::::::: ::::::::  ${RESET}"
+echo -e "${YELLOW}${BOLD}:+:    :+: :+:    :+:   :+: :+:   :+:    :+: :+:   :+:        :+: :+:   :+:    :+:     :+:    :+:    :+: ${RESET}"
+echo -e "${GREEN}${BOLD}+:+        +:+    +:+  +:+   +:+   +:+  +:+   +:+ +:+        +:+   +:+  +:+    +:+     +:+    +:+    +:+ ${RESET}"
+echo -e "${CYAN}${BOLD}+#+        +#++:++#:  +#++++#++:   +#++:+     +#++:        +#++:++#++: +#+    +:+     +#+    +#+    +:+ ${RESET}"
+echo -e "${MAGENTA}${BOLD}+#+        +#+    +#+ +#+     +#+  +#+  +#+     +#+         +#+     +#+ +#+    +#+     +#+    +#+    +#+ ${RESET}"
+echo -e "${RED}${BOLD}#+#    #+# #+#    #+# #+#     #+# #+#    #+#    #+#         #+#     #+# #+#    #+#     #+#    #+#    #+# ${RESET}"
+echo -e "${YELLOW}${BOLD} ########  ###    ### ###     ### ###    ###    ###         ###     ###  ########      ###     ########  ${RESET}"
 
 echo "[+] Starting Automcation Script..."
 if [ -z "$1" ]; then
