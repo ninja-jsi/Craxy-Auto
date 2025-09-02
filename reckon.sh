@@ -31,7 +31,7 @@ cat $OUTPUT/subdomains/all_subs.txt | httpx -silent -o $OUTPUT/subdomains/live_s
 
 echo "[+] Port scanning with Naabu..."
 sed -i 's#^https\?://##' $OUTPUT/subdomains/live_subs.txt
-naabu -list $OUTPUT/subdomains/live_subs.txt -p 0-65535 -o $OUTPUT/ports/naabu.txt &
+naabu -list $OUTPUT/subdomains/live_subs.txt -p 0-65535 -rate 20000 -o $OUTPUT/ports/naabu.txt &
 
 echo "[+] Service detection with Nmap..."
 nmap -T4 -sC -sV -iL $OUTPUT/subdomains/live_subs.txt -oN $OUTPUT/scans/nmap.txt &
