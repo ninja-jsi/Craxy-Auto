@@ -54,7 +54,7 @@ gowitness scan file -f  "$OUTPUT/subdomains/live_subs.txt" --screenshot-path "$O
 
 echo "[+] Directory Bruteforcing..."
 for port in $(cat $OUTPUT/ports/naabu.txt); do
-    ffuf -u http://$DOMAIN:$port/FUZZ -w $OUTPUT/wordlists/common.txt -o ffuf_$port.json
+    ffuf -u http://$DOMAIN:$port/FUZZ -w $OUTPUT/wordlists/common.txt -t 150 -o ffuf_$port.json
 done
 
 # -----------------------------------
@@ -79,8 +79,8 @@ wait
 # -----------------------------------
 echo "[+] Running directory brute force..."
 
-dirsearch -u https://$DOMAIN -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
-gobuster dir -u https://$DOMAIN -w $OUTPUT/wordlists/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
+dirsearch -u https://$DOMAIN -t 50 -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
+gobuster dir -u https://$DOMAIN -w $OUTPUT/wordlists/common.txt -t 100 -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
 
 while read url; do
     echo "Scanning $url ..."
