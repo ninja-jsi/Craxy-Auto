@@ -9,6 +9,35 @@
 # gau, waybackurls, gf, feroxbuster
 # ----------------------------
 
+
+#!/bin/bash
+
+# ------------------------------
+# Crazy Auto Recon Banner
+# ------------------------------
+
+# Colors
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+# ASCII Banner
+echo -e "${RED}   ______                  _                       "
+echo -e "${RED}  / ____/___  ____ _____  (_)___  ____ _          "
+echo -e "${YELLOW} / /   / __ \/ __ \`/ __ \/ / __ \/ __ \`/          "
+echo -e "${YELLOW}/ /___/ /_/ / /_/ / /_/ / / / / / /_/ /           "
+echo -e "${GREEN}\____/\____/\__,_/ .___/_/_/ /_/\__, /            "
+echo -e "${GREEN}                /_/             /____/             "
+echo -e "${CYAN}----------------------------------------------------"
+echo -e "${CYAN}  Crazy Auto Recon - Bug Bounty Recon Automation   "
+echo -e "${CYAN}  Version: 1.0 | Author: ninja-jsi            "
+echo -e "${CYAN}----------------------------------------------------${RESET}"
+echo ""
+
+
 echo "[+] Starting Automcation Script..."
 if [ -z "$1" ]; then
     echo "Usage: $0 <domain>"
