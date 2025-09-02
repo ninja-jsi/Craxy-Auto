@@ -79,7 +79,7 @@ wait
 # -----------------------------------
 echo "[+] Running directory brute force..."
 
-dirsearch -u https://$DOMAIN -t 50 -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
+python3 ~/dirsearch/dirsearch.py -u https://$DOMAIN -t 50 -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
 gobuster dir -u https://$DOMAIN -w $OUTPUT/wordlists/common.txt -t 100 -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
 
 while read url; do
