@@ -36,6 +36,7 @@ BOLD="\e[1m"
 RESET="\e[0m"
 
 # Crazy-Auto Banner with Colors
+echo -e ""
 echo -e "${RED}${BOLD} ::::::::  :::::::::      :::     :::    ::: :::   :::          :::     :::    ::: ::::::::::: ::::::::  ${RESET}"
 echo -e "${YELLOW}${BOLD}:+:    :+: :+:    :+:   :+: :+:   :+:    :+: :+:   :+:        :+: :+:   :+:    :+:     :+:    :+:    :+: ${RESET}"
 echo -e "${GREEN}${BOLD}+:+        +:+    +:+  +:+   +:+   +:+  +:+   +:+ +:+        +:+   +:+  +:+    +:+     +:+    +:+    +:+ ${RESET}"
@@ -43,6 +44,7 @@ echo -e "${CYAN}${BOLD}+#+        +#++:++#:  +#++++#++:   +#++:+     +#++:      
 echo -e "${MAGENTA}${BOLD}+#+        +#+    +#+ +#+     +#+  +#+  +#+     +#+         +#+     +#+ +#+    +#+     +#+    +#+    +#+ ${RESET}"
 echo -e "${RED}${BOLD}#+#    #+# #+#    #+# #+#     #+# #+#    #+#    #+#         #+#     #+# #+#    #+#     #+#    #+#    #+# ${RESET}"
 echo -e "${YELLOW}${BOLD} ########  ###    ### ###     ### ###    ###    ###         ###     ###  ########      ###     ########  ${RESET}"
+echo -e ""
 
 echo "[+] Starting Automcation Script..."
 if [ -z "$1" ]; then
