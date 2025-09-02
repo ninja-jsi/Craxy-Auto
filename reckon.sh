@@ -68,7 +68,11 @@ wait
 # -----------------------------------
 # Directory/File Bruteforce
 # -----------------------------------
-echo "[+] Running directory brute force (feroxbuster)..."
+echo "[+] Running directory brute force..."
+
+dirsearch -u https://$DOMAIN -o $OUTPUT/dirs/dirsearch-$DOMAIN.txt
+gobuster dir -u https://$DOMAIN -w /usr/share/wordlists/dirb/common.txt -o $OUTPUT/dirs/gobuster-$DOMAIN.txt
+
 while read url; do
     echo "Scanning $url ..."
     feroxbuster -u $url -w /usr/share/seclists/Discovery/Web-Content/common.txt -t 50 -o "$OUTPUT/dirs/$(echo $url | sed 's/https\?:\/\///').txt" &
