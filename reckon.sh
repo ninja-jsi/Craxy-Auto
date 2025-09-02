@@ -54,7 +54,7 @@ gowitness scan file -f  "$OUTPUT/subdomains/live_subs.txt" --screenshot-path "$O
 
 echo "[+] Directory Bruteforcing..."
 for port in $(cat $OUTPUT/ports/naabu.txt); do
-    ffuf -u http://$DOMAIN:$port/FUZZ -w $OUTPUT/wordlists/common.txt -t 150 -o ffuf_$port.json
+    ffuf -u http://$DOMAIN:$port/FUZZ -w $OUTPUT/wordlists/common.txt -t 150 -o $OUTPUT/dirs/ffuf_$port.json
 done
 
 # -----------------------------------
