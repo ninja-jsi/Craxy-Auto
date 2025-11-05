@@ -147,7 +147,7 @@ run_task_bg(){
 
 # prepare dashboard.py into OUTPUT for live UI
 # prepare dashboard.py into OUTPUT for live UI
-cat > "$OUTPUT/dashboard.py" <<"EOF"
+cat > "$OUTPUT/dashboard.py" << 'EOF'
 from flask import Flask, jsonify, render_template_string
 import os, json, time
 
@@ -179,15 +179,14 @@ def index():
     domain = os.environ.get('RECON_DOMAIN','unknown')
     host = os.environ.get('RECON_HOST','0.0.0.0')
     port = os.environ.get('RECON_PORT','8000')
-    tasks = []
 
+    tasks = []
     if os.path.isdir(STATUS_DIR):
         for fn in sorted(os.listdir(STATUS_DIR)):
             path = os.path.join(STATUS_DIR,fn)
             try:
                 with open(path) as f:
-                    d = json.load(f)
-                tasks.append(d)
+                    tasks.append(json.load(f))
             except:
                 continue
 
@@ -195,18 +194,17 @@ def index():
     if os.path.isdir(LOG_DIR):
         for lf in sorted(os.listdir(LOG_DIR)):
             if lf.endswith('.log'):
-                path=os.path.join(LOG_DIR,lf)
                 try:
-                    with open(path) as f:
-                        data=''.join(f.readlines()[-200:])
-                    logs_content[lf]=data
+                    with open(os.path.join(LOG_DIR,lf)) as f:
+                        logs_content[lf] = ''.join(f.readlines()[-200:])
                 except:
-                    logs_content[lf]='(error reading)'
+                    logs_content[lf] = "(error reading)"
 
-    return render_template_string(TEMPLATE, domain=domain, host=host, port=port,
-                                 ts=time.ctime(), tasks=tasks,
-                                 logs=sorted(logs_content.keys()),
-                                 logs_content=logs_content)
+    return render_template_string(
+        TEMPLATE, domain=domain, host=host, port=port, ts=time.ctime(),
+        tasks=tasks, logs=sorted(logs_content.keys()),
+        logs_content=logs_content
+    )
 
 if __name__ == '__main__':
     import os
