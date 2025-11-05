@@ -57,7 +57,8 @@ EOF
 if [ $# -lt 1 ]; then usage; fi
 ARGS=("$@")
 POSITIONAL=()
-while (( "$#" )); do
+# Use arithmetic context without quotes
+while (( $# )); do
   case "$1" in
     --mode) MODE="$2"; shift 2;;
     --install-missing) INSTALL_MISSING=true; shift;;
@@ -92,7 +93,9 @@ write_status(){
   # write_status <task> <status> <pid> <msg>
   task="$1"; st="$2"; pid_val="$3"; msg="$4"
   ts="$(date --iso-8601=seconds 2>/dev/null || date +%s)"
-  printf '{"task":"%s","status":"%s","pid":%s,"msg":"%s","ts":"%s"}\n' "${task}" "${st}" "${pid_val}" "${msg//\"/'}" "${ts}" > "$status_dir/${task}.json"
+  # replace double quotes in msg so JSON stays valid
+  safe_msg="${msg//\"/'}"
+  printf '{"task":"%s","status":"%s","pid":%s,"msg":"%s","ts":"%s"}\n' "${task}" "${st}" "${pid_val}" "${safe_msg}" "${ts}" > "$status_dir/${task}.json"
 }
 
 append_log(){
@@ -111,13 +114,14 @@ notify(){
       curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" -d chat_id="$chatid" -d text="[Recon][$DOMAIN] $msg" >/dev/null 2>&1 || true
     fi
   fi
-  # slack
-if [ -n "$SLACK_WEBHOOK" ]; then
-  # build payload safely using printf to avoid nested-quote issues
-  safe_msg="${msg//\"/'}"   # replace any double-quotes in msg with single-quotes
-  payload=$(printf '{"text":"[Recon][%s] %s"}' "$DOMAIN" "$safe_msg")
-  curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1 || true
-fi
+
+  # slack (build payload safely)
+  if [ -n "$SLACK_WEBHOOK" ]; then
+    safe_msg="${msg//\"/'}"   # replace any double-quotes in msg with single-quotes
+    # using printf avoids nested-quote issues
+    payload=$(printf '{"text":"[Recon][%s] %s"}' "$DOMAIN" "$safe_msg")
+    curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1 || true
+  fi
 }
 
 # wrapper to run tasks and update status files
@@ -128,7 +132,11 @@ run_task_bg(){
   cmd=( "$@" )
   append_log "$task" "START: ${cmd[*]}"
   tmpf="$OUTPUT/logs/${task}_cmd.sh"
-  printf '%s\n' "#!/usr/bin/env bash" "${cmd[*]}" > "$tmpf"
+  # create a script that preserves quoting
+  {
+    printf '%s\n' "#!/usr/bin/env bash"
+    printf '%s\n' "${cmd[@]}"
+  } > "$tmpf"
   chmod +x "$tmpf"
   ( "$tmpf" >> "$OUTPUT/logs/${task}.log" 2>&1 ) &
   pid=$!
@@ -379,6 +387,7 @@ git_task &
 echo "Dashboard: http://${LOCAL_IP}:${DASH_PORT}"
 while true; do
   echo "---- Status summary ($(date +'%H:%M:%S')) ----"
+  shopt -s nullglob
   for f in "$status_dir"/*.json; do
     [ -f "$f" ] || continue
     if command -v jq >/dev/null 2>&1; then
