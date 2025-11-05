@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# crazy-auto-recon-enterprise-with-dashboard.sh
-# Enterprise Recon + Dashboard + Notifications + JS secret hunter + Cloud bucket sweeper
-# Single-file runner: generates a small Python Flask dashboard (dashboard.py) into the output dir and runs it.
-# Usage:
-#   chmod +x crazy-auto-recon-enterprise-with-dashboard.sh
-#   ./crazy-auto-recon-enterprise-with-dashboard.sh example.com --mode medium [--install-missing] [--telegram TOKEN:CHATID] [--slack WEBHOOK]
-#
-# WARNING: Only run against targets you have permission to test.
-
+# reckon.sh  — Enterprise recon + dashboard (hardened)
+# Usage: ./reckon.sh example.com --mode <fast|medium|full> [--install-missing] [--telegram TOKEN:CHATID] [--slack WEBHOOK]
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -30,11 +23,11 @@ INSTALL_PREFIX="$HOME/.local/bin"
 export PATH="$INSTALL_PREFIX:$PATH:$HOME/go/bin"
 
 ########################################
-# Helpers
+# Usage help (safe heredoc)
 ########################################
-usage(){
-  cat <<EOF
-$PROGNAME <domain> [flags]
+usage() {
+cat <<'USAGE'
+Usage: reckon.sh <domain> [flags]
 Flags:
   --mode <fast|medium|full>
   --install-missing
@@ -46,18 +39,16 @@ Flags:
   --slack WEBHOOK_URL       (optional)
 
 Example:
-  $PROGNAME example.com --mode fast --telegram 123:456 --slack https://hooks.slack.com/....
+  ./reckon.sh example.com --mode fast --telegram 123:456 --slack https://hooks.slack.com/....
 
-This script writes status files and launches a small web dashboard accessible on your LAN.
-EOF
+Only run against targets you have permission to test.
+USAGE
   exit 1
 }
 
 # parse args
 if [ $# -lt 1 ]; then usage; fi
-ARGS=("$@")
 POSITIONAL=()
-# Use arithmetic context without quotes
 while (( $# )); do
   case "$1" in
     --mode) MODE="$2"; shift 2;;
@@ -74,6 +65,7 @@ while (( $# )); do
     *) POSITIONAL+=("$1"); shift;;
   esac
 done
+
 if [ ${#POSITIONAL[@]} -lt 1 ]; then usage; fi
 DOMAIN="${POSITIONAL[0]}"
 OUTPUT="${DOMAIN}${OUTPUT_SUFFIX}"
@@ -90,16 +82,14 @@ DASH_PORT=8000
 status_dir="$OUTPUT/logs/status"
 mkdir -p "$status_dir"
 write_status(){
-  # write_status <task> <status> <pid> <msg>
   task="$1"; st="$2"; pid_val="$3"; msg="$4"
   ts="$(date --iso-8601=seconds 2>/dev/null || date +%s)"
-  # replace double quotes in msg so JSON stays valid
   safe_msg="${msg//\"/'}"
-  printf '{"task":"%s","status":"%s","pid":%s,"msg":"%s","ts":"%s"}\n' "${task}" "${st}" "${pid_val}" "${safe_msg}" "${ts}" > "$status_dir/${task}.json"
+  printf '{"task":"%s","status":"%s","pid":%s,"msg":"%s","ts":"%s"}\n' \
+    "${task}" "${st}" "${pid_val}" "${safe_msg}" "${ts}" > "$status_dir/${task}.json"
 }
 
 append_log(){
-  # append_log <task> <line>
   task="$1"; line="$2"; echo "[$(date +'%F %T')] $line" >> "$OUTPUT/logs/${task}.log"
 }
 
@@ -114,25 +104,20 @@ notify(){
       curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" -d chat_id="$chatid" -d text="[Recon][$DOMAIN] $msg" >/dev/null 2>&1 || true
     fi
   fi
-
-  # slack (build payload safely)
+  # slack (safe JSON payload)
   if [ -n "$SLACK_WEBHOOK" ]; then
-    safe_msg="${msg//\"/'}"   # replace any double-quotes in msg with single-quotes
-    # using printf avoids nested-quote issues
+    safe_msg="${msg//\"/'}"
     payload=$(printf '{"text":"[Recon][%s] %s"}' "$DOMAIN" "$safe_msg")
     curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1 || true
   fi
 }
 
-# wrapper to run tasks and update status files
+# run task in background and write status
 run_task_bg(){
-  # run_task_bg <taskname> <command...>
   task="$1"; shift
-  # build command string safely
   cmd=( "$@" )
   append_log "$task" "START: ${cmd[*]}"
   tmpf="$OUTPUT/logs/${task}_cmd.sh"
-  # create a script that preserves quoting
   {
     printf '%s\n' "#!/usr/bin/env bash"
     printf '%s\n' "${cmd[@]}"
@@ -141,20 +126,21 @@ run_task_bg(){
   ( "$tmpf" >> "$OUTPUT/logs/${task}.log" 2>&1 ) &
   pid=$!
   write_status "$task" "running" "$pid" "started"
-  # monitor it
+  # monitor
   ( while kill -0 "$pid" 2>/dev/null; do sleep 1; done; wait "$pid"; rc=$?; if [ $rc -eq 0 ]; then write_status "$task" "done" 0 "exit 0"; append_log "$task" "COMPLETED (rc=0)"; notify "Task $task completed"; else write_status "$task" "failed" 0 "rc=$rc"; append_log "$task" "FAILED (rc=$rc)"; notify "Task $task failed (rc=$rc)"; fi ) &
 }
 
-# prepare dashboard.py into OUTPUT for live UI
-# prepare dashboard.py into OUTPUT for live UI
-cat > "$OUTPUT/dashboard.py" << 'EOF'
-from flask import Flask, jsonify, render_template_string
+########################################
+# Dashboard Python file (safe heredoc)
+########################################
+cat > "$OUTPUT/dashboard.py" <<'PY'
+from flask import Flask, render_template_string
 import os, json, time
 
 app = Flask(__name__)
 BASE = os.path.dirname(__file__)
-STATUS_DIR = os.path.join(BASE,'logs','status')
-LOG_DIR = os.path.join(BASE,'logs')
+STATUS_DIR = os.path.join(BASE, 'logs', 'status')
+LOG_DIR = os.path.join(BASE, 'logs')
 
 TEMPLATE = """<!doctype html><html><head><meta charset=utf-8><title>Recon Dashboard</title>
 <style>body{font-family:Inter,Arial;background:#0f1722;color:#e6eef8;padding:20px}h1{color:#8be9fd}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #223}pre{background:#071226;padding:10px;border-radius:6px;max-height:240px;overflow:auto}</style>
@@ -183,10 +169,11 @@ def index():
     tasks = []
     if os.path.isdir(STATUS_DIR):
         for fn in sorted(os.listdir(STATUS_DIR)):
-            path = os.path.join(STATUS_DIR,fn)
+            path = os.path.join(STATUS_DIR, fn)
             try:
                 with open(path) as f:
-                    tasks.append(json.load(f))
+                    d = json.load(f)
+                tasks.append(d)
             except:
                 continue
 
@@ -195,30 +182,26 @@ def index():
         for lf in sorted(os.listdir(LOG_DIR)):
             if lf.endswith('.log'):
                 try:
-                    with open(os.path.join(LOG_DIR,lf)) as f:
+                    with open(os.path.join(LOG_DIR, lf)) as f:
                         logs_content[lf] = ''.join(f.readlines()[-200:])
                 except:
                     logs_content[lf] = "(error reading)"
 
-    return render_template_string(
-        TEMPLATE, domain=domain, host=host, port=port, ts=time.ctime(),
-        tasks=tasks, logs=sorted(logs_content.keys()),
-        logs_content=logs_content
-    )
+    return render_template_string(TEMPLATE, domain=domain, host=host, port=port,
+                                 ts=time.ctime(), tasks=tasks, logs=sorted(logs_content.keys()),
+                                 logs_content=logs_content)
 
 if __name__ == '__main__':
     import os
     os.environ.setdefault('RECON_PORT','8000')
     app.run(host='0.0.0.0', port=int(os.environ.get('RECON_PORT',8000)))
-EOF
+PY
 
 chmod +x "$OUTPUT/dashboard.py"
-
-# initial status
 write_status runner "initialized" 0 "ready"
 
 ########################################
-# Wordlists (persistent, only download missing unless refresh requested)
+# Wordlists (persistent)
 ########################################
 declare -A WL
 WL[common]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt"
@@ -231,21 +214,30 @@ for k in "${!WL[@]}"; do
   tgt="$GLOBAL_WORDLISTS/${k}.txt"
   if [ "$REFRESH_WORDLISTS" = true ] || [ ! -s "$tgt" ]; then
     echo "[wordlists] downloading $k"
-    if command -v wget >/dev/null 2>&1; then wget -q "${WL[$k]}" -O "$tgt" || true; else curl -sSfL "${WL[$k]}" -o "$tgt" || true; fi
+    if command -v wget >/dev/null 2>&1; then
+      wget -q "${WL[$k]}" -O "$tgt" || true
+    else
+      curl -sSfL "${WL[$k]}" -o "$tgt" || true
+    fi
     sed -i 's/\r$//' "$tgt" 2>/dev/null || true
   fi
 done
 
-# combined small for fast runs
+# combined small list
 cat "$GLOBAL_WORDLISTS/common.txt" "$GLOBAL_WORDLISTS/dir_med.txt" 2>/dev/null | sort -u > "$GLOBAL_WORDLISTS/fuzz-combined-small.txt" || true
 
 ########################################
-# Optional: install missing tools (best effort)
+# Optional installs (best-effort)
 ########################################
 if [ "$INSTALL_MISSING" = true ]; then
-  echo "[installer] install-missing requested: attempting best-effort installs"
+  echo "[installer] attempting installs (Go/pip)"
   if command -v go >/dev/null 2>&1; then
-    for pkg in "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest" "github.com/projectdiscovery/httpx/cmd/httpx@latest" "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest" "github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest" "github.com/projectdiscovery/katana/cmd/katana@latest"; do
+    for pkg in \
+      "github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest" \
+      "github.com/projectdiscovery/httpx/cmd/httpx@latest" \
+      "github.com/projectdiscovery/naabu/v2/cmd/naabu@latest" \
+      "github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest" \
+      "github.com/projectdiscovery/katana/cmd/katana@latest"; do
       GO111MODULE=on go install "$pkg" || true
     done
   fi
@@ -255,7 +247,7 @@ if [ "$INSTALL_MISSING" = true ]; then
 fi
 
 ########################################
-# Task implementations (they use run_task_bg wrapper)
+# Task implementations
 ########################################
 subenum_task(){
   write_status subenum starting 0 "starting subdomain enumeration"
@@ -264,7 +256,7 @@ subenum_task(){
   if [ "$MODE" != "fast" ]; then
     run_task_bg amass timeout 600 amass enum -passive -d "$DOMAIN" -o "$OUTPUT/subdomains/amass.txt"
   fi
-  (sleep 12; cat "$OUTPUT/subdomains"/*.txt 2>/dev/null | sort -u > "$OUTPUT/subdomains/all_subs.txt"; write_status subenum running 0 "merged initial outputs" ) &
+  (sleep 12; cat "$OUTPUT/subdomains"/*.txt 2>/dev/null | sort -u > "$OUTPUT/subdomains/all_subs.txt"; write_status subenum running 0 "merged initial outputs") &
 }
 
 live_task(){
@@ -310,6 +302,7 @@ dirfuzz_task(){
   if [ -f "$OUTPUT/ports/naabu.txt" ]; then
     while IFS= read -r line; do
       port=$(echo "$line" | awk -F: '{print $NF}')
+      # safer host extraction (bash)
       host="${line%:*}"
       run_task_bg ffuf_${host}_${port} ffuf -u "http://$host:$port/FUZZ" -w "$WL_USE" -t 150 -o "$OUTPUT/dirs/ffuf_${host}_${port}.json"
     done < "$OUTPUT/ports/naabu.txt"
@@ -400,7 +393,8 @@ while true; do
   for f in "$status_dir"/*.json; do
     [ -f "$f" ] || continue
     if command -v jq >/dev/null 2>&1; then
-      jq -r '.task+" | "+.status+" | pid:"+(.pid|tostring)+" | "+.msg' "$f" 2>/dev/null || cat "$f"
+      # safe jq quoting (double-quoted string); avoids shell parse issues
+      jq -r ".task + \" | \" + .status + \" | pid:\" + (.pid|tostring) + \" | \" + .msg" "$f" 2>/dev/null || cat "$f"
     else
       cat "$f"
     fi
