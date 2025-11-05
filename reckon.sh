@@ -310,9 +310,7 @@ dirfuzz_task(){
   if [ -f "$OUTPUT/ports/naabu.txt" ]; then
     while IFS= read -r line; do
       port=$(echo "$line" | awk -F: '{print $NF}')
-      # host=$(echo "$line" | awk -F: '{$NF=""; sub(/:$/,""); print $0}')
       host="${line%:*}"
-      # host=$(echo "$line" | awk -F':' '{ $NF=""; sub(/:$/,""); print $0 }')
       run_task_bg ffuf_${host}_${port} ffuf -u "http://$host:$port/FUZZ" -w "$WL_USE" -t 150 -o "$OUTPUT/dirs/ffuf_${host}_${port}.json"
     done < "$OUTPUT/ports/naabu.txt"
   else
