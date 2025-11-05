@@ -112,9 +112,12 @@ notify(){
     fi
   fi
   # slack
-  if [ -n "$SLACK_WEBHOOK" ]; then
-    curl -s -X POST -H 'Content-type: application/json' --data "{\"text\": \"[Recon][${DOMAIN}] ${msg//\"/'}\"}" "$SLACK_WEBHOOK" >/dev/null 2>&1 || true
-  fi
+if [ -n "$SLACK_WEBHOOK" ]; then
+  # build payload safely using printf to avoid nested-quote issues
+  safe_msg="${msg//\"/'}"   # replace any double-quotes in msg with single-quotes
+  payload=$(printf '{"text":"[Recon][%s] %s"}' "$DOMAIN" "$safe_msg")
+  curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null 2>&1 || true
+fi
 }
 
 # wrapper to run tasks and update status files
