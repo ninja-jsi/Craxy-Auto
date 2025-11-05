@@ -146,14 +146,17 @@ run_task_bg(){
 }
 
 # prepare dashboard.py into OUTPUT for live UI
-cat > "$OUTPUT/dashboard.py" <<'PY'
+# prepare dashboard.py into OUTPUT for live UI
+cat > "$OUTPUT/dashboard.py" <<"EOF"
 from flask import Flask, jsonify, render_template_string
 import os, json, time
-app=Flask(__name__)
-BASE=os.path.dirname(__file__)
-STATUS_DIR=os.path.join(BASE,'logs','status')
-LOG_DIR=os.path.join(BASE,'logs')
-TEMPLATE='''<!doctype html><html><head><meta charset=utf-8><title>Recon Dashboard</title>
+
+app = Flask(__name__)
+BASE = os.path.dirname(__file__)
+STATUS_DIR = os.path.join(BASE,'logs','status')
+LOG_DIR = os.path.join(BASE,'logs')
+
+TEMPLATE = """<!doctype html><html><head><meta charset=utf-8><title>Recon Dashboard</title>
 <style>body{font-family:Inter,Arial;background:#0f1722;color:#e6eef8;padding:20px}h1{color:#8be9fd}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #223}pre{background:#071226;padding:10px;border-radius:6px;max-height:240px;overflow:auto}</style>
 <meta http-equiv="refresh" content="5"></head><body>
 <h1>Recon Dashboard: {{domain}}</h1>
@@ -169,23 +172,26 @@ TEMPLATE='''<!doctype html><html><head><meta charset=utf-8><title>Recon Dashboar
 <h3>{{logfile}}</h3>
 <pre>{{logs_content[logfile]}}</pre>
 {% endfor %}
-</body></html>'''
+</body></html>"""
+
 @app.route('/')
 def index():
-    domain=os.environ.get('RECON_DOMAIN','unknown')
-    host=os.environ.get('RECON_HOST','0.0.0.0')
-    port=os.environ.get('RECON_PORT','8000')
-    tasks=[]
+    domain = os.environ.get('RECON_DOMAIN','unknown')
+    host = os.environ.get('RECON_HOST','0.0.0.0')
+    port = os.environ.get('RECON_PORT','8000')
+    tasks = []
+
     if os.path.isdir(STATUS_DIR):
         for fn in sorted(os.listdir(STATUS_DIR)):
-            path=os.path.join(STATUS_DIR,fn)
+            path = os.path.join(STATUS_DIR,fn)
             try:
                 with open(path) as f:
-                    d=json.load(f)
+                    d = json.load(f)
                 tasks.append(d)
-            except Exception:
+            except:
                 continue
-    logs_content={}
+
+    logs_content = {}
     if os.path.isdir(LOG_DIR):
         for lf in sorted(os.listdir(LOG_DIR)):
             if lf.endswith('.log'):
@@ -196,12 +202,17 @@ def index():
                     logs_content[lf]=data
                 except:
                     logs_content[lf]='(error reading)'
-    return render_template_string(TEMPLATE, domain=domain, host=host, port=port, ts=time.ctime(), tasks=tasks, logs=sorted(logs_content.keys()), logs_content=logs_content)
-if __name__=='__main__':
+
+    return render_template_string(TEMPLATE, domain=domain, host=host, port=port,
+                                 ts=time.ctime(), tasks=tasks,
+                                 logs=sorted(logs_content.keys()),
+                                 logs_content=logs_content)
+
+if __name__ == '__main__':
     import os
     os.environ.setdefault('RECON_PORT','8000')
-    app.run(host='0.0.0.0',port=int(os.environ.get('RECON_PORT',8000)))
-PY
+    app.run(host='0.0.0.0', port=int(os.environ.get('RECON_PORT',8000)))
+EOF
 
 chmod +x "$OUTPUT/dashboard.py"
 
