@@ -91,8 +91,29 @@ if [ ${#POSITIONAL[@]} -lt 1 ]; then usage; fi
 DOMAIN="${POSITIONAL[0]}"
 OUTPUT="${DOMAIN}${OUTPUT_SUFFIX}"
 
-# Create all needed directories upfront
-mkdir -p "$OUTPUT"/{logs,subdomains,params,katana,s3,git,dirs,ports,jsfiles,screenshots} "$GLOBAL_WORDLISTS"
+########################################
+# Create directory structure FIRST
+########################################
+echo "[*] Setting up output directories..."
+mkdir -p "$OUTPUT"
+mkdir -p "$OUTPUT/logs"
+mkdir -p "$OUTPUT/logs/status"
+mkdir -p "$OUTPUT/subdomains"
+mkdir -p "$OUTPUT/params"
+mkdir -p "$OUTPUT/katana"
+mkdir -p "$OUTPUT/s3"
+mkdir -p "$OUTPUT/git"
+mkdir -p "$OUTPUT/dirs"
+mkdir -p "$OUTPUT/ports"
+mkdir -p "$OUTPUT/jsfiles"
+mkdir -p "$OUTPUT/screenshots"
+mkdir -p "$GLOBAL_WORDLISTS"
+
+# Verify critical directories exist
+if [ ! -d "$OUTPUT/logs" ]; then
+    echo "[error] Failed to create logs directory: $OUTPUT/logs"
+    exit 1
+fi
 
 # Get local IP
 get_local_ip(){
@@ -103,7 +124,6 @@ DASH_PORT=8000
 
 # Status helpers
 status_dir="$OUTPUT/logs/status"
-mkdir -p "$status_dir"
 
 write_status(){
   local task="$1" st="$2" pid_val="$3" msg="$4"
@@ -843,21 +863,38 @@ export RECON_DOMAIN="$DOMAIN"
 export RECON_HOST="$LOCAL_IP"
 export RECON_PORT="$DASH_PORT"
 
+echo "[*] Starting dashboard server..."
+
+# Verify dashboard.py exists
+if [ ! -f "$OUTPUT/dashboard.py" ]; then
+    echo "[error] Dashboard file not found: $OUTPUT/dashboard.py"
+    exit 1
+fi
+
+# Start dashboard with proper error handling
 (
-  cd "$OUTPUT"
-  python3 dashboard.py >> "$OUTPUT/logs/dashboard.log" 2>&1
+  cd "$OUTPUT" || exit 1
+  python3 dashboard.py >> logs/dashboard.log 2>&1
 ) &
 DASH_PID=$!
 
-sleep 2
+# Give dashboard time to start
+sleep 3
 
+# Verify dashboard is running
 if kill -0 "$DASH_PID" 2>/dev/null; then
   write_status dashboard running "$DASH_PID" "dashboard online"
   append_log dashboard "Dashboard started at http://${LOCAL_IP}:${DASH_PORT}"
-  echo "✓ Dashboard started successfully"
+  echo "✓ Dashboard started successfully (PID: $DASH_PID)"
+  echo "  Access at: http://${LOCAL_IP}:${DASH_PORT}"
 else
   write_status dashboard failed 0 "failed to start"
-  echo "✗ Dashboard failed to start (check logs/dashboard.log)"
+  echo "✗ Dashboard failed to start"
+  echo "  Check logs: $OUTPUT/logs/dashboard.log"
+  if [ -f "$OUTPUT/logs/dashboard.log" ]; then
+    echo "  Last 10 lines:"
+    tail -n 10 "$OUTPUT/logs/dashboard.log" | sed 's/^/    /'
+  fi
 fi
 
 echo ""
