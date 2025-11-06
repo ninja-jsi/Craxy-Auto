@@ -843,6 +843,9 @@ export RECON_DOMAIN="$DOMAIN"
 export RECON_HOST="$LOCAL_IP"
 export RECON_PORT="$DASH_PORT"
 
+# Ensure logs directory exists before starting dashboard
+mkdir -p "$OUTPUT/logs"
+
 (
   cd "$OUTPUT"
   python3 dashboard.py >> "$OUTPUT/logs/dashboard.log" 2>&1
