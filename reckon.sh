@@ -136,7 +136,7 @@ echo "  Found $(wc -l < "$OUTPUT/subdomains/all.txt" 2>/dev/null || echo 0) uniq
 # Live host detection
 echo "[*] Checking live hosts..."
 if command -v httpx >/dev/null 2>&1; then
-  httpx -silent -l "$OUTPUT/subdomains/all.txt" -o "$OUTPUT/subdomains/live.txt" || echo "httpx failed"
+  httpx -l "$OUTPUT/subdomains/all.txt" -o "$OUTPUT/subdomains/live.txt" -no-color -json -threads 50 || true || echo "httpx failed"
   echo "  $(wc -l < "$OUTPUT/subdomains/live.txt" 2>/dev/null || echo 0) live hosts detected."
 fi
 
