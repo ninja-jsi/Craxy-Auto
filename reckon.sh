@@ -183,6 +183,8 @@ detect_pkg_manager(){
 # -----------------------
 # Pretty tools display (always shows both present and missing)
 # -----------------------
+echo "DEBUG: Present count: ${#present[@]} | Missing count: ${#missing[@]}"
+
 pretty_tools_display() {
   local -n _present="$1"
   local -n _missing="$2"
@@ -239,14 +241,12 @@ pretty_tools_display() {
   echo "└────────────────────────────────────────────────────────┘"
   echo ""
 
-  # Final status
+  # Print status after both boxes
   if (( missing_count > 0 )); then
     echo -e "${YELLOW}⚠️  Missing tools detected. Please install them or re-run with --install.${NC}"
     echo -e "${RED}✗  Script will now exit to prevent incomplete recon.${NC}"
     echo
-    for t in "${_missing[@]}"; do
-      echo "   • $t"
-    done
+    for t in "${_missing[@]}"; do echo "   • $t"; done
     echo
     exit 1
   else
@@ -254,7 +254,6 @@ pretty_tools_display() {
     echo
   fi
 }
-
 
 # -----------------------
 # Installer helpers
@@ -311,13 +310,21 @@ ensure_wordlists(){
 # Dependency check & optional installer
 # -----------------------
 detect_pkg_manager
-present=(); missing=(); essential_missing=(); optional_missing=()
 
+# Initialize arrays
+present=()
+missing=()
+essential_missing=()
+optional_missing=()
+
+# Combine all tool lists
+ALL_TOOLS=("${ESSENTIAL[@]}" "${OPTIONAL[@]}")
+
+# Populate arrays
 for t in "${ALL_TOOLS[@]}"; do
   if command -v "$t" >/dev/null 2>&1; then
     present+=("$t")
   else
-    # classify as essential or optional
     if printf '%s\n' "${ESSENTIAL[@]}" | grep -qx "$t"; then
       essential_missing+=("$t")
     else
@@ -327,7 +334,11 @@ for t in "${ALL_TOOLS[@]}"; do
   fi
 done
 
+# Always show both boxes clearly
 pretty_tools_display present missing
+
+# Debug: show counts (you can remove this once verified)
+echo -e "\nDEBUG -> Present: ${#present[@]} | Missing: ${#missing[@]} | Essential missing: ${#essential_missing[@]}\n"
 
 # If only tools-only mode requested
 if [ "$TOOLS_ONLY" = true ]; then
