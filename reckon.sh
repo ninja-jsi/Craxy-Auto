@@ -5,6 +5,109 @@
 # mode: fast | medium | full  (default: medium)
 
 set -euo pipefail
+
+####################################
+# Help Section / Argument Parser
+####################################
+
+show_help() {
+  cat << 'EOF'
+Usage: full-auto-recon-tui.sh <domain> [mode] [options]
+
+Description:
+  Full Automated Reconnaissance Script with a TUI interface (gum-based),
+  one-time wordlist management, automatic dependency installation, and
+  full bug bounty recon pipeline.
+
+Modes:
+  fast     - Minimal scan (subdomains + live hosts)
+  medium   - Standard scan (default) (adds URLs, parameters, secrets)
+  full     - Deep scan (includes ports, nuclei, screenshots, dirs, etc.)
+
+Options:
+  -h, --help               Show this help menu and exit.
+  --no-install             Skip automatic tool installation (useful for CI).
+  --update-wordlists       Force refresh of all wordlists in ~/Recon-Wordlists/.
+  --no-tui                 Disable gum UI (fallback to basic terminal output).
+  --tools-only             Run only the dependency check & installer, then exit.
+  --report-only            Generate final summary/report from existing data.
+  --mode=<mode>            Explicitly set scan mode (fast, medium, full).
+  --domain=<domain>        Explicitly set target domain (useful for automation).
+
+Examples:
+  ./full-auto-recon-tui.sh example.com
+  ./full-auto-recon-tui.sh example.com full
+  ./full-auto-recon-tui.sh --domain target.com --mode fast --no-install
+  ./full-auto-recon-tui.sh --update-wordlists
+
+Output:
+  Results saved to <domain>-recon/ directory.
+  Wordlists stored centrally in ~/Recon-Wordlists/
+
+Dependencies:
+  gum, curl, jq, go, pip3, gem, subfinder, assetfinder, amass, httpx,
+  dnsx, gau, waybackurls, gf, naabu, nmap, nuclei, gowitness, ffuf,
+  feroxbuster, dirsearch, gobuster, wpscan, s3scanner.
+
+EOF
+}
+
+# ----------------------------
+# Parse Args
+# ----------------------------
+DOMAIN=""
+MODE="medium"
+NO_INSTALL=false
+NO_TUI=false
+TOOLS_ONLY=false
+REPORT_ONLY=false
+UPDATE_WORDLISTS=false
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    --no-install)
+      NO_INSTALL=true
+      shift
+      ;;
+    --no-tui)
+      NO_TUI=true
+      shift
+      ;;
+    --tools-only)
+      TOOLS_ONLY=true
+      shift
+      ;;
+    --report-only)
+      REPORT_ONLY=true
+      shift
+      ;;
+    --update-wordlists)
+      UPDATE_WORDLISTS=true
+      shift
+      ;;
+    --mode=*)
+      MODE="${arg#*=}"
+      shift
+      ;;
+    --domain=*)
+      DOMAIN="${arg#*=}"
+      shift
+      ;;
+    *)
+      # If positional argument is not flag, treat as domain or mode
+      if [ -z "$DOMAIN" ]; then
+        DOMAIN="$arg"
+      elif [ "$MODE" = "medium" ]; then
+        MODE="$arg"
+      fi
+      ;;
+  esac
+done
+
 IFS=$'\n\t'
 
 # ----------------------------
