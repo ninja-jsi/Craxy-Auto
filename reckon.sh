@@ -171,13 +171,14 @@ pretty_tools_display() {
 
   local GREEN="\033[0;32m"
   local RED="\033[0;31m"
+  local YELLOW="\033[1;33m"
   local NC="\033[0m"
   local COLS=3
   local PAD=26
 
   format_grid() {
     local -n arr="$1"; local symbol="$2"; local color="$3"
-    local i=0; local out_lines=(); local line=""
+    local i=0; local line=""
     for item in "${arr[@]}"; do
       local short="$(printf '%.20s' "$item")"
       local cell="$(printf '%s %s' "$symbol" "$short")"
@@ -185,10 +186,9 @@ pretty_tools_display() {
       printf -v padded "%-${PAD}s" "$cell"
       line+="$padded"
       ((i++))
-      if (( i % COLS == 0 )); then out_lines+=("$line"); line=""; fi
+      if (( i % COLS == 0 )); then echo -e "  $line"; line=""; fi
     done
-    [ -n "$line" ] && out_lines+=("$line")
-    for l in "${out_lines[@]}"; do echo -e "  $l"; done
+    [ -n "$line" ] && echo -e "  $line"
   }
 
   local present_count=${#_present[@]}
@@ -196,32 +196,40 @@ pretty_tools_display() {
   local present_header="✅ Present (${present_count})"
   local missing_header="❌ Missing (${missing_count})"
 
-  if [ -n "$GUM" ]; then
-    $GUM style --border normal --padding "1 2" --border-foreground 33 "$present_header"
-    format_grid _present "✓" "$GREEN"
-    echo
-    $GUM style --border normal --padding "1 2" --border-foreground 160 "$missing_header"
-    format_grid _missing "✗" "$RED"
-    echo
-  else
-    printf "┌%s┐\n" "$(printf '─%.0s' {1..60})"
-    printf "│ %-58s │\n" "$present_header"
-    printf "├%s┤\n" "$(printf '─%.0s' {1..60})"
-    format_grid _present "✓" "$GREEN"
-    printf "└%s┘\n\n" "$(printf '─%.0s' {1..60})"
-    printf "┌%s┐\n" "$(printf '─%.0s' {1..60})"
-    printf "│ %-58s │\n" "$missing_header"
-    printf "├%s┤\n" "$(printf '─%.0s' {1..60})"
-    format_grid _missing "✗" "$RED"
-    printf "└%s┘\n\n" "$(printf '─%.0s' {1..60})"
-  fi
-
-  if (( missing_count > 0 )); then
-    echo -e "${YELLOW}Next:${NC} Install missing tools or run with --no-install to skip automatic install."
-  else
-    echo -e "${GREEN}All required tools are present. Ready to run the pipeline.${NC}"
-  fi
   echo
+  echo "┌──────────────────────────────────────────────┐"
+  printf "│ %-44s │\n" "$present_header"
+  echo "├──────────────────────────────────────────────┤"
+  if (( present_count > 0 )); then
+    format_grid _present "✓" "$GREEN"
+  else
+    echo "  (none)"
+  fi
+  echo "└──────────────────────────────────────────────┘"
+  echo
+
+  echo "┌──────────────────────────────────────────────┐"
+  printf "│ %-44s │\n" "$missing_header"
+  echo "├──────────────────────────────────────────────┤"
+  if (( missing_count > 0 )); then
+    format_grid _missing "✗" "$RED"
+  else
+    echo "  (none)"
+  fi
+  echo "└──────────────────────────────────────────────┘"
+  echo
+
+  # Status message
+  if (( missing_count > 0 )); then
+    echo -e "${YELLOW}⚠️  Missing tools detected. Please install them or re-run with --install.${NC}"
+    echo -e "${RED}Script will now exit to prevent partial recon.${NC}"
+    for t in "${_missing[@]}"; do echo "   • $t"; done
+    echo
+    exit 1
+  else
+    echo -e "${GREEN}All required tools are available. Starting recon...${NC}"
+    echo
+  fi
 }
 
 # installers
