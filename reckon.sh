@@ -183,8 +183,6 @@ detect_pkg_manager(){
 # -----------------------
 # Pretty tools display (always shows both present and missing)
 # -----------------------
-echo "DEBUG: Present count: ${#present[@]} | Missing count: ${#missing[@]}"
-
 pretty_tools_display() {
   local -n _present="$1"
   local -n _missing="$2"
