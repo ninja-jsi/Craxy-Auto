@@ -203,7 +203,10 @@ pretty_tools_display() {
       printf -v padded "%-${PAD}s" "$cell"
       line+="$padded"
       ((i++))
-      if (( i % COLS == 0 )); then echo -e "  $line"; line=""; fi
+      if (( i % COLS == 0 )); then
+        echo -e "  $line"
+        line=""
+      fi
     done
     [ -n "$line" ] && echo -e "  $line"
   }
@@ -223,7 +226,7 @@ pretty_tools_display() {
     echo "  (none)"
   fi
   echo "└────────────────────────────────────────────────────────┘"
-  echo
+  echo ""
 
   echo "┌────────────────────────────────────────────────────────┐"
   printf "│ %-54s │\n" "$missing_header"
@@ -234,8 +237,24 @@ pretty_tools_display() {
     echo "  (none)"
   fi
   echo "└────────────────────────────────────────────────────────┘"
-  echo
+  echo ""
+
+  # Final status
+  if (( missing_count > 0 )); then
+    echo -e "${YELLOW}⚠️  Missing tools detected. Please install them or re-run with --install.${NC}"
+    echo -e "${RED}✗  Script will now exit to prevent incomplete recon.${NC}"
+    echo
+    for t in "${_missing[@]}"; do
+      echo "   • $t"
+    done
+    echo
+    exit 1
+  else
+    echo -e "${GREEN}All required tools are available. Starting recon...${NC}"
+    echo
+  fi
 }
+
 
 # -----------------------
 # Installer helpers
