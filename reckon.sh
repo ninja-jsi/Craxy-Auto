@@ -142,8 +142,8 @@ ok "Subdomains found: $total_subs"
 
 # ===== Live Host Detection =====
 section "🌐 Live Host Detection"
-run_cmd "dnsx -silent -l '$OUTPUT_DIR/subdomains/all.txt' > '$OUTPUT_DIR/subdomains/resolved.txt'"
-run_cmd "httpx -l '$OUTPUT_DIR/subdomains/resolved.txt' -silent > '$OUTPUT_DIR/subdomains/live.txt'"
+run_cmd "dnsx -l '$OUTPUT_DIR/subdomains/all.txt' -v > '$OUTPUT_DIR/subdomains/resolved.txt'"
+run_cmd "httpx -l '$OUTPUT_DIR/subdomains/resolved.txt' -v > '$OUTPUT_DIR/subdomains/live.txt'"
 live_count=$(wc -l < "$OUTPUT_DIR/subdomains/live.txt" || echo 0)
 ok "Live web hosts: $live_count"
 
