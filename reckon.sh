@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# full-auto-recon-tui-updated.sh
-# Full Auto Recon (TUI) - OS-aware installers, central wordlists, fail-fast if essentials missing
-# Usage: ./full-auto-recon-tui-updated.sh <domain> [mode] [--os=<os>] [--no-install] [--verbose]
+# full-auto-recon.sh
+# Full Auto Recon - pretty TUI, OS-aware installers, central wordlists, fail-fast on essentials
+# Usage: ./full-auto-recon.sh <domain> [mode] [options]
+# Options: --help --no-install --os=<os> --verbose --update-wordlists --tools-only --report-only --mode=<mode>
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# -------------------------
+########################
 # Config / Defaults
-# -------------------------
+########################
 SCRIPT_NAME="$(basename "$0")"
 DOMAIN=""
 MODE="medium"               # fast | medium | full
@@ -26,21 +27,23 @@ UPDATE_WORDLISTS=false
 
 START_TS=$(date +%s)
 
-# -------------------------
+# -----------------------
 # Colors
-# -------------------------
+# -----------------------
 RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[1;33m"; BLUE="\033[0;34m"; NC="\033[0m"
 
-# -------------------------
-# Tools lists
-# -------------------------
-# Essentials for bug-bounty and general environment
-ESSENTIAL=(git curl wget jq awk sed sort unzip ca-certificates build-essential python3 python3-pip ruby make gcc)
+# -----------------------
+# Tool lists
+# -----------------------
+# ESSENTIAL: tools that must be present for script to run
+ESSENTIAL=(git curl wget jq awk sed sort unzip python3 python3-pip go)
+# OPTIONAL (useful recon tools; script will warn if missing but continue unless essential missing)
+OPTIONAL=(subfinder assetfinder amass httpx dnsx gau waybackurls gf naabu nmap nuclei gowitness ffuf feroxbuster dirsearch gobuster wpscan s3scanner katana)
 
-# Tools (scanners and helpers)
-TOOLS=(subfinder assetfinder amass httpx dnsx gau waybackurls gf naabu nmap nuclei gowitness ffuf feroxbuster dirsearch gobuster wpscan s3scanner katana gauplus)
+# combined list for convenience
+ALL_TOOLS=("${ESSENTIAL[@]}" "${OPTIONAL[@]}")
 
-# go packages mapping for go-installable tools
+# Map of go-installable packages
 declare -A GO_PKGS=(
   [subfinder]=github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
   [httpx]=github.com/projectdiscovery/httpx/cmd/httpx@latest
@@ -57,35 +60,35 @@ declare -A GO_PKGS=(
   [katana]=github.com/projectdiscovery/katana/cmd/katana@latest
 )
 
-# -------------------------
-# Helpers
-# -------------------------
+########################
+# Help & Arg parsing
+########################
 show_help() {
   cat <<'EOF'
-Usage: full-auto-recon-tui-updated.sh <domain> [mode] [options]
+Usage: full-auto-recon.sh <domain> [mode] [options]
 
 Modes:
   fast     - minimal (subdomains + live)
   medium   - default (URLs, params, JS secrets)
-  full     - deep (ports, fuzzing, nuclei, screenshots, wpscan)
+  full     - deep (ports, fuzzing, nuclei, screenshots)
 
 Options:
   -h, --help           Show this help
-  --os=<os>            Your OS: ubuntu|debian|kali|macos|arch|centos
+  --os=<os>            OS (ubuntu|debian|kali|macos|arch|centos)
   --no-install         Do not attempt automatic installation
-  --verbose            Show verbose installer output
-  --update-wordlists   Force refresh of central wordlists
+  --verbose            Show verbose installer output and command outputs
+  --update-wordlists   Force refresh of central wordlists in ~/Recon-Wordlists
   --tools-only         Run dependency check/installer then exit
-  --report-only        Only generate report from existing output (no scanning)
+  --report-only        Generate report from existing output dir
   --mode=<mode>        Set mode: fast|medium|full
 
 Examples:
-  $SCRIPT_NAME example.com
-  $SCRIPT_NAME example.com full --os=ubuntu --verbose
+  ./full-auto-recon.sh example.com
+  ./full-auto-recon.sh example.com full --os=ubuntu --verbose
 EOF
 }
 
-# parse arguments
+# parse args
 for arg in "$@"; do
   case "$arg" in
     -h|--help) show_help; exit 0;;
@@ -107,6 +110,9 @@ done
 if [ -z "$DOMAIN" ]; then echo "Error: missing domain"; show_help; exit 1; fi
 OUTPUT_DIR="${DOMAIN}-recon"
 
+# -----------------------
+# Helper wrappers
+# -----------------------
 info(){ echo -e "${BLUE}[*]${NC} $*"; }
 ok(){ echo -e "${GREEN}[✓]${NC} $*"; }
 warn(){ echo -e "${YELLOW}[!]${NC} $*"; }
@@ -125,26 +131,31 @@ gum_style(){
   if [ -n "$GUM" ]; then
     "$GUM" style "$@"
   else
+    # emulate: print message only
     echo "$1"
   fi
 }
 
 gum_spin_run(){
+  # usage: gum_spin_run "Title" "<command>"
   local title="$1"; shift
+  local cmd="$*"
   if [ -n "$GUM" ]; then
     if [ "$VERBOSE" = true ]; then
-      "$GUM" spin --spinner line --title "$title" -- sh -c "$*"
+      "$GUM" spin --spinner line --title "$title" -- sh -c "$cmd"
     else
-      "$GUM" spin --spinner line --title "$title" -- sh -c "$*" >/dev/null 2>&1 || true
+      "$GUM" spin --spinner line --title "$title" -- sh -c "$cmd" >/dev/null 2>&1 || true
     fi
   else
     echo -n "$title ... "
-    if [ "$VERBOSE" = true ]; then sh -c "$*"; else sh -c "$*" >/dev/null 2>&1 || true; fi
+    if [ "$VERBOSE" = true ]; then sh -c "$cmd"; else sh -c "$cmd" >/dev/null 2>&1 || true; fi
     echo "done"
   fi
 }
 
-# detect package manager
+# -----------------------
+# Detect package manager / OS
+# -----------------------
 detect_pkg_manager(){
   if [ -n "$OS_NAME" ]; then
     case "$OS_NAME" in
@@ -162,9 +173,16 @@ detect_pkg_manager(){
     else PKG_MANAGER=""
     fi
   fi
+  if [ -z "$PKG_MANAGER" ]; then
+    gum_style "Could not detect package manager. We'll prompt for OS when needed."
+  else
+    info "Using package manager: $PKG_MANAGER"
+  fi
 }
 
-# pretty tools display
+# -----------------------
+# Pretty tools display (always shows both present and missing)
+# -----------------------
 pretty_tools_display() {
   local -n _present="$1"
   local -n _missing="$2"
@@ -180,9 +198,8 @@ pretty_tools_display() {
     local -n arr="$1"; local symbol="$2"; local color="$3"
     local i=0; local line=""
     for item in "${arr[@]}"; do
-      local short="$(printf '%.20s' "$item")"
-      local cell="$(printf '%s %s' "$symbol" "$short")"
-      cell="${color}${cell}${NC}"
+      [[ -z "$item" ]] && continue
+      local cell="${color}${symbol} ${item}${NC}"
       printf -v padded "%-${PAD}s" "$cell"
       line+="$padded"
       ((i++))
@@ -197,45 +214,36 @@ pretty_tools_display() {
   local missing_header="❌ Missing (${missing_count})"
 
   echo
-  echo "┌──────────────────────────────────────────────┐"
-  printf "│ %-44s │\n" "$present_header"
-  echo "├──────────────────────────────────────────────┤"
+  echo "┌────────────────────────────────────────────────────────┐"
+  printf "│ %-54s │\n" "$present_header"
+  echo "├────────────────────────────────────────────────────────┤"
   if (( present_count > 0 )); then
     format_grid _present "✓" "$GREEN"
   else
     echo "  (none)"
   fi
-  echo "└──────────────────────────────────────────────┘"
+  echo "└────────────────────────────────────────────────────────┘"
   echo
 
-  echo "┌──────────────────────────────────────────────┐"
-  printf "│ %-44s │\n" "$missing_header"
-  echo "├──────────────────────────────────────────────┤"
+  echo "┌────────────────────────────────────────────────────────┐"
+  printf "│ %-54s │\n" "$missing_header"
+  echo "├────────────────────────────────────────────────────────┤"
   if (( missing_count > 0 )); then
     format_grid _missing "✗" "$RED"
   else
     echo "  (none)"
   fi
-  echo "└──────────────────────────────────────────────┘"
+  echo "└────────────────────────────────────────────────────────┘"
   echo
-
-  # Status message
-  if (( missing_count > 0 )); then
-    echo -e "${YELLOW}⚠️  Missing tools detected. Please install them or re-run with --install.${NC}"
-    echo -e "${RED}Script will now exit to prevent partial recon.${NC}"
-    for t in "${_missing[@]}"; do echo "   • $t"; done
-    echo
-    exit 1
-  else
-    echo -e "${GREEN}All required tools are available. Starting recon...${NC}"
-    echo
-  fi
 }
 
-# installers
+# -----------------------
+# Installer helpers
+# -----------------------
 apt_install(){ sudo apt-get update -y >/dev/null 2>&1 || true; sudo apt-get install -y "$@" ; }
 yum_install(){ sudo yum install -y "$@" ; }
 brew_install(){ brew install "$@" ; }
+pacman_install(){ sudo pacman -S --noconfirm "$@" ; }
 pip_install(){ pip3 install --user "$@" ; }
 gem_install(){ sudo gem install "$@" || gem install --user-install "$@" ; }
 go_install_tool(){
@@ -249,16 +257,20 @@ go_install_tool(){
 show_manual_instructions(){
   echo
   echo "Manual install hints:"
-  echo "  - Debian/Ubuntu: sudo apt install git curl wget jq build-essential ruby python3-pip go"
+  echo "  - Debian/Ubuntu: sudo apt install git curl wget jq build-essential python3-pip golang-go ruby"
+  echo "  - macOS (brew):  brew install git curl wget jq go ruby"
   echo "  - Go tools (after installing Go):"
   for k in "${!GO_PKGS[@]}"; do echo "      GO111MODULE=on go install ${GO_PKGS[$k]}"; done
-  echo "  - WPScan: sudo gem install wpscan"
+  echo "  - waybackurls: go install github.com/tomnomnom/waybackurls@latest"
+  echo "  - wpscan: sudo gem install wpscan"
   echo "  - dirsearch: git clone https://github.com/maurosoria/dirsearch.git ~/dirsearch"
   echo "  - s3scanner: pip3 install --user s3scanner"
   echo
 }
 
-# ensure central wordlists
+# -----------------------
+# Wordlists
+# -----------------------
 ensure_wordlists(){
   mkdir -p "$WORDLIST_DIR"
   declare -A WL=(
@@ -270,107 +282,126 @@ ensure_wordlists(){
   for k in "${!WL[@]}"; do
     tgt="$WORDLIST_DIR/${k}.txt"
     if [ ! -s "$tgt" ] || [ "${UPDATE_WORDLISTS}" = true ]; then
-      info "Downloading $k wordlist..."
-      if curl -sSfL "${WL[$k]}" -o "$tgt"; then ok "Downloaded $k"; else warn "Failed $k"; fi
+      info "Downloading wordlist: $k"
+      if curl -sSfL "${WL[$k]}" -o "$tgt"; then ok "Downloaded $k"; else warn "Failed to download $k"; fi
     fi
   done
 }
 
-# -------------------------
-# Start: detect pkg manager & check tools
-# -------------------------
+# -----------------------
+# Dependency check & optional installer
+# -----------------------
 detect_pkg_manager
+present=(); missing=(); essential_missing=(); optional_missing=()
 
-# build present and missing
-present=(); missing=()
-for t in "${ESSENTIAL[@]}" "${TOOLS[@]}"; do
-  if command -v "$t" >/dev/null 2>&1; then present+=("$t"); else missing+=("$t"); fi
+for t in "${ALL_TOOLS[@]}"; do
+  if command -v "$t" >/dev/null 2>&1; then
+    present+=("$t")
+  else
+    # classify as essential or optional
+    if printf '%s\n' "${ESSENTIAL[@]}" | grep -qx "$t"; then
+      essential_missing+=("$t")
+    else
+      optional_missing+=("$t")
+    fi
+    missing+=("$t")
+  fi
 done
-# ensure jq present as essential (if not already)
-if ! command -v jq >/dev/null 2>&1; then missing+=("jq"); fi
 
 pretty_tools_display present missing
 
-# If report-only or tools-only, handle separately
-if [ "${REPORT_ONLY:-false}" = true ]; then
-  generate_report(){ :; } # placeholder - user can call report generator later
-  ok "Report-only mode; exiting."
-  exit 0
-fi
-
-if [ "${TOOLS_ONLY:-false}" = true ] && [ ${#missing[@]} -eq 0 ]; then
-  ok "All tools present."
-  exit 0
-fi
-
-# Auto-install logic
-if (( ${#missing[@]} > 0 )); then
-  if [ "$AUTO_INSTALL" = true ]; then
-    if gum_yesno "Attempt to auto-install missing tools? (requires sudo/go/pip/gem)"; then
-      info "Attempting auto-install..."
-      # ensure go if needed
-      if ! command -v go >/dev/null 2>&1; then
-        case "$PKG_MANAGER" in
-          apt) sudo apt-get update -y >/dev/null 2>&1 || true; sudo apt-get install -y golang >/dev/null 2>&1 || true;;
-          brew) brew install go >/dev/null 2>&1 || true;;
-        esac
-      fi
-      for t in "${missing[@]}"; do
-        info "Installing: $t"
-        if [[ "$t" == "wpscan" ]]; then
-          if command -v gem >/dev/null 2>&1; then
-            if [ "$VERBOSE" = true ]; then gem install wpscan || warn "Failed gem install wpscan"; else gem install wpscan >/dev/null 2>&1 || warn "Failed wpscan"; fi
-          else
-            warn "gem not found; can't auto-install wpscan"
-          fi
-        elif [[ -n "${GO_PKGS[$t]:-}" ]]; then
-          if go_install_tool "$t"; then ok "Installed $t via go"; else warn "go install failed for $t"; fi
-        elif [[ "$t" == "s3scanner" ]]; then
-          if pip_install s3scanner; then ok "Installed s3scanner via pip"; else warn "pip install s3scanner failed"; fi
-        elif [[ "$t" == "dirsearch" ]]; then
-          if [ ! -d "$HOME/dirsearch" ]; then git clone https://github.com/maurosoria/dirsearch.git "$HOME/dirsearch" >/dev/null 2>&1 || warn "Failed to clone dirsearch"; fi
-          ok "dirsearch cloned to ~/dirsearch"
-        else
-          case "$PKG_MANAGER" in
-            apt) apt_install "$t" >/dev/null 2>&1 && ok "apt installed $t" || warn "apt failed for $t";;
-            brew) brew_install "$t" >/dev/null 2>&1 && ok "brew installed $t" || warn "brew failed for $t";;
-            yum) yum_install "$t" >/dev/null 2>&1 && ok "yum installed $t" || warn "yum failed for $t";;
-            pacman) sudo pacman -S --noconfirm "$t" >/dev/null 2>&1 && ok "pacman installed $t" || warn "pacman failed for $t";;
-            *) warn "No package manager to auto-install $t";;
-          esac
-        fi
-      done
-      # re-evaluate present/missing
-      present=(); missing=()
-      for t in "${ESSENTIAL[@]}" "${TOOLS[@]}"; do
-        if command -v "$t" >/dev/null 2>&1; then present+=("$t"); else missing+=("$t"); fi
-      done
-      pretty_tools_display present missing
-
-      # --- FAIL-FAST: Exit if still missing essentials ---
-      if (( ${#missing[@]} > 0 )); then
-        echo
-        die "Required tools are still missing. Please install them manually before running."
-        echo "Missing tools:"
-        for t in "${missing[@]}"; do echo "  • $t"; done
-        show_manual_instructions
-        exit 1
-      fi
-    else
-      die "Auto-install declined. Install missing tools and re-run."
-    fi
+# If only tools-only mode requested
+if [ "$TOOLS_ONLY" = true ]; then
+  if [ "${#essential_missing[@]}" -gt 0 ]; then
+    die "Essential tools missing: ${essential_missing[*]}. Install them and re-run."
   else
-    die "Missing required tools: ${missing[*]}. Rerun with --no-install to skip auto-install or install manually."
+    ok "All essential tools present."
+    exit 0
   fi
 fi
 
-# ensure wordlists
+# If essentials missing, offer auto-install (unless --no-install)
+if [ "${#essential_missing[@]}" -gt 0 ]; then
+  echo
+  warn "Essential tools missing: ${essential_missing[*]}"
+  if [ "$AUTO_INSTALL" = true ]; then
+    if gum_yesno "Attempt to auto-install essential tools? (requires sudo/go/pip/gem)"; then
+      info "Auto-install: installing essentials..."
+      # try to install essentials depending on package manager
+      for t in "${ESSENTIAL[@]}"; do
+        if command -v "$t" >/dev/null 2>&1; then continue; fi
+        info "Installing $t ..."
+        case "$t" in
+          git|curl|wget|jq|unzip|build-essential|python3|python3-pip|go|golang-go)
+            case "$PKG_MANAGER" in
+              apt) apt_install "$t" >/dev/null 2>&1 && ok "apt installed $t" || warn "apt failed for $t";;
+              brew) brew_install "$t" >/dev/null 2>&1 && ok "brew installed $t" || warn "brew failed for $t";;
+              yum) yum_install "$t" >/dev/null 2>&1 && ok "yum installed $t" || warn "yum failed for $t";;
+              pacman) pacman_install "$t" >/dev/null 2>&1 && ok "pacman installed $t" || warn "pacman failed for $t";;
+              *) warn "No known package manager to auto-install $t";;
+            esac
+            ;;
+          *)
+            warn "No installer mapping for $t; please install manually."
+            ;;
+        esac
+      done
+      # re-evaluate essentials
+      essential_missing=()
+      for t in "${ESSENTIAL[@]}"; do
+        if ! command -v "$t" >/dev/null 2>&1; then essential_missing+=("$t"); fi
+      done
+      if [ "${#essential_missing[@]}" -gt 0 ]; then
+        echo
+        die "Essential tools still missing after auto-install: ${essential_missing[*]}. Please install manually."
+        show_manual_instructions
+      else
+        ok "All essential tools are now present."
+      fi
+    else
+      die "Auto-install declined. Install essentials and re-run."
+    fi
+  else
+    die "Essential tools missing and auto-install disabled. Please install: ${essential_missing[*]}"
+  fi
+fi
+
+# Warn about optional missing (but continue)
+if [ "${#optional_missing[@]}" -gt 0 ]; then
+  echo
+  warn "Optional tools not found (features may be limited): ${optional_missing[*]}"
+  echo "You can install them later or use --no-install to skip auto installs."
+  show_manual_instructions
+fi
+
+# Ensure central wordlists
 ensure_wordlists
 
-# Make directories
+# If report-only requested and output dir exists, generate a report from existing files
+if [ "$REPORT_ONLY" = true ]; then
+  if [ ! -d "$OUTPUT_DIR" ]; then die "Output directory $OUTPUT_DIR not found for report-only"; fi
+  # simple report generation
+  mkdir -p "$OUTPUT_DIR/reports"
+  cat > "$OUTPUT_DIR/reports/REPORT.txt" <<REPORT
+Recon Report - $DOMAIN
+Mode: $MODE
+Date: $(date)
+
+Summary:
+  Subdomains: $(wc -l < "$OUTPUT_DIR/subdomains/all_subs.txt" 2>/dev/null || echo 0)
+  Live Hosts: $(wc -l < "$OUTPUT_DIR/subdomains/live_subs.txt" 2>/dev/null || echo 0)
+  URLs: $(wc -l < "$OUTPUT_DIR/urls/all_urls.txt" 2>/dev/null || echo 0)
+REPORT
+  ok "Report generated: $OUTPUT_DIR/reports/REPORT.txt"
+  exit 0
+fi
+
+# Create directories
 mkdir -p "$OUTPUT_DIR"/{subdomains,urls,params,secrets,dirs,ports,reports,screenshots,temp}
 
-# ------------- Pipeline phases (abridged but functional) -------------
+# -----------------------
+# Pipeline functions
+# -----------------------
 run_subdomain_enum(){
   gum_spin_run "Subdomain enumeration" bash -lc '
     mkdir -p "'"$OUTPUT_DIR"'/temp"
@@ -543,10 +574,10 @@ EOF
   ok "Report saved: $OUTPUT_DIR/reports/REPORT.txt"
 }
 
-# -------------------------
-# Run pipeline
-# -------------------------
-ok "Starting recon for $DOMAIN (mode: $MODE)"
+# -----------------------
+# Main run
+# -----------------------
+ok "Starting recon for: $DOMAIN (mode: $MODE)"
 ensure_wordlists
 mkdir -p "$OUTPUT_DIR"
 
