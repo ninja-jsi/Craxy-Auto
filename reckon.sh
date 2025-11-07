@@ -116,10 +116,10 @@ section "📜 Wordlist Setup"
 
 declare -A WL=(
   [common]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt"
-  [dir_medium]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-medium.txt"
+  [dir_medium]="https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt"
   [raft_small]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-small-directories.txt"
   [params]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt"
-  [s3]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/AWS/s3-buckets-top50.txt"
+  [s3]="https://raw.githubusercontent.com/Den1al/PyLazyS3/refs/heads/master/lists/common_bucket_prefixes.txt"
 )
 for k in "${!WL[@]}"; do
   tgt="$WORDLIST_DIR/$k.txt"
