@@ -254,7 +254,7 @@ fi
 # ===== Screenshots =====
 section "📸 Capturing Screenshots"
 if command -v gowitness >/dev/null 2>&1; then
-  run_cmd "gowitness scan --disable-db --input-file '$OUTPUT_DIR/subdomains/live.txt' --destination '$OUTPUT_DIR/screenshots' --timeout 10"
+  run_cmd "gowitness scan file -f '$OUTPUT_DIR/subdomains/live.txt' --write-db '$OUTPUT_DIR/screenshots' --timeout 10"
   ok "Screenshots saved to $OUTPUT_DIR/screenshots"
 fi
 
