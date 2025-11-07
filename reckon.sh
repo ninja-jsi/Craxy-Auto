@@ -316,8 +316,8 @@ if ! command -v jq >/dev/null 2>&1; then missing+=("jq"); fi
 # Interactive display - if gum available use it; else plain
 if [ -n "$GUM_BIN" ]; then
   $GUM_BIN style --border normal --margin "1 2" --padding "1 2" --align center "🌐 Full Auto Recon (TUI)  — Target: $DOMAIN — Mode: $MODE"
-  $GUM_BIN info "Present tools:"; printf '%s\n' "${present[@]}" | $GUM_BIN format
-  $GUM_BIN alert "Missing tools:"; printf '%s\n' "${missing[@]:-(none)}" | $GUM_BIN format || true
+  $GUM_BIN style --foreground 34 "✅ Present tools:"; printf '%s\n' "${present[@]}" | $GUM_BIN format
+  $GUM_BIN style --foreground 203 "❌ Missing tools:"; printf '%s\n' "${missing[@]:-(none)}" | $GUM_BIN format || true
 else
   echo "============================================="
   echo "Full Auto Recon (TUI)  — Target: $DOMAIN — Mode: $MODE"
