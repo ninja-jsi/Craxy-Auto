@@ -228,6 +228,7 @@ if [[ "$MODE" != "fast" ]]; then
       fi
     fi
   fi
+fi
 
 # ===== Vulnerability Scan =====
 if [[ "$MODE" != "fast" ]]; then
