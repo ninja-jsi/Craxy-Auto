@@ -132,26 +132,50 @@ ok "Wordlists ready in $WORDLIST_DIR"
 
 # ===== Subdomain Enumeration =====
 section "🔍 Subdomain Enumeration"
-run_cmd "subfinder -silent -d '$DOMAIN' -o '$OUTPUT_DIR/temp/subfinder.txt'"
-run_cmd "assetfinder --subs-only '$DOMAIN' > '$OUTPUT_DIR/temp/assetfinder.txt'"
-run_cmd "curl -s 'https://crt.sh/?q=%25.$DOMAIN&output=json' | jq -r '.[].name_value' | sed 's/\\*\\.//g' > '$OUTPUT_DIR/temp/crtsh.txt'"
+# run_cmd "subfinder -silent -d '$DOMAIN' -o '$OUTPUT_DIR/temp/subfinder.txt'"
+# run_cmd "assetfinder --subs-only '$DOMAIN' > '$OUTPUT_DIR/temp/assetfinder.txt'"
+# run_cmd "curl -s 'https://crt.sh/?q=%25.$DOMAIN&output=json' | jq -r '.[].name_value' | sed 's/\\*\\.//g' > '$OUTPUT_DIR/temp/crtsh.txt'"
 
-run_cmd "cat '$OUTPUT_DIR/temp'/*.txt 2>/dev/null | sed 's/^\\.*//;s/\\s//g' | tr '[:upper:]' '[:lower:]' | grep -E '^[a-z0-9._-]+\\.[a-z]{2,}$' | sort -u > '$OUTPUT_DIR/subdomains/all.txt'"
-total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all.txt" || echo 0)
+# run_cmd "cat '$OUTPUT_DIR/temp'/*.txt 2>/dev/null | sed 's/^\\.*//;s/\\s//g' | tr '[:upper:]' '[:lower:]' | grep -E '^[a-z0-9._-]+\\.[a-z]{2,}$' | sort -u > '$OUTPUT_DIR/subdomains/all.txt'"
+subfinder -silent -d $DOMAIN -o $OUTPUT_DIR/subdomains/subfinder.txt &
+assetfinder --subs-only $DOMAIN | tee $OUTPUT_DIR/subdomains/assetfinder.txt &
+amass enum -passive -d $DOMAIN -o $OUTPUT_DIR/subdomains/amass.txt &
+wait
+
+cat $OUTPUT_DIR/subdomains/*.txt | sort -u > $OUTPUT_DIR/subdomains/all_subs.txt
+
+total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all_subs.txt" || echo 0)
 ok "Subdomains found: $total_subs"
 
 # ===== Live Host Detection =====
 section "🌐 Live Host Detection"
-run_cmd "dnsx -l '$OUTPUT_DIR/subdomains/all.txt' -v > '$OUTPUT_DIR/subdomains/resolved.txt'"
-run_cmd "httpx -l '$OUTPUT_DIR/subdomains/resolved.txt' -v > '$OUTPUT_DIR/subdomains/live.txt'"
-live_count=$(wc -l < "$OUTPUT_DIR/subdomains/live.txt" || echo 0)
+# run_cmd "dnsx -l '$OUTPUT_DIR/subdomains/all.txt' -v > '$OUTPUT_DIR/subdomains/resolved.txt'"
+# run_cmd "httpx -l '$OUTPUT_DIR/subdomains/resolved.txt' -v > '$OUTPUT_DIR/subdomains/live.txt'"
+cat $OUTPUT/subdomains/all_subs.txt | httpx -silent -o $OUTPUT_DIR/subdomains/live_subs.txt
+cat $OUTPUT/subdomains/all_subs.txt | dnsx  -silent -o $OUTPUT_DIR/subdomains/resolved.txt
+live_count=$(wc -l < "$OUTPUT_DIR/subdomains/live_subs.txt" || echo 0)
+resolved_count=$(wc -l < "$OUTPUT_DIR/subdomains/resolved.txt" || echo 0)
 ok "Live web hosts: $live_count"
+ok "Resolved web hosts: $resolved_count"
+
+# ===== Port Scanning with Naabu =====
+echo "[+] Port scanning with Naabu..."
+sed -i 's#^https\?://##' $OUTPUT_DIR/subdomains/live_subs.txt
+naabu -list $OUTPUT_DIR/subdomains/live_subs.txt -p 0-65535 -rate 20000 -o $OUTPUT_DIR/ports/naabu.txt &
+
+# ===== Service Detection with Nmap =====
+echo "[+] Service detection with Nmap..."
+nmap -T4 -sC -sV -iL $OUTPUT_DIR/subdomains/live_subs.txt -oN $OUTPUT_DIR/scans/nmap.txt &
+wait
 
 # ===== URL Collection =====
 if [[ "$MODE" != "fast" ]]; then
   section "🔗 URL Collection"
-  run_cmd "cat '$OUTPUT_DIR/subdomains/live.txt' | gau --threads 10 > '$OUTPUT_DIR/urls/gau.txt'"
-  run_cmd "cat '$OUTPUT_DIR/subdomains/live.txt' | waybackurls > '$OUTPUT_DIR/urls/wayback.txt'"
+  # run_cmd "cat '$OUTPUT_DIR/subdomains/live_subs.txt' | gau > '$OUTPUT_DIR/urls/gau.txt'"
+  # run_cmd "cat '$OUTPUT_DIR/subdomains/live_subs.txt' | waybackurls > '$OUTPUT_DIR/urls/wayback.txt'"
+  (cat $OUTPUT_DIR/subdomains/live_subs.txt | gau > $OUTPUT_DIR/params/gau.txt) &
+  (cat $OUTPUT_DIR/subdomains/live_subs.txt | waybackurls > $OUTPUT_DIR/params/wayback.txt) &
+  wait
   run_cmd "cat '$OUTPUT_DIR/urls'/*.txt 2>/dev/null | sort -u > '$OUTPUT_DIR/urls/all.txt'"
   url_count=$(wc -l < "$OUTPUT_DIR/urls/all.txt" || echo 0)
   ok "URLs collected: $url_count"
@@ -233,30 +257,43 @@ fi
 # ===== Vulnerability Scan =====
 if [[ "$MODE" != "fast" ]]; then
   section "🚨 Vulnerability Scan (Nuclei)"
-  run_cmd "nuclei -l '$OUTPUT_DIR/subdomains/live.txt' -silent > '$OUTPUT_DIR/reports/nuclei.txt'"
+  # run_cmd "nuclei -l '$OUTPUT_DIR/subdomains/live.txt' -silent > '$OUTPUT_DIR/reports/nuclei.txt'"
+  nuclei -l $OUTPUT_DIR/subdomains/live_subs.txt -c 50 -rl 100 -tags cves,exposures -o $OUTPUT_DIR/scans/nuclei.txt &
   vulns=$(wc -l < "$OUTPUT_DIR/reports/nuclei.txt" || echo 0)
   ok "Nuclei findings: $vulns"
-fi
-
-# ===== Directory Fuzzing =====
-if [[ "$MODE" == "full" ]]; then
-  section "📂 Directory Fuzzing"
-  proto="https"
-  if ! curl -Is --max-time 5 "https://$DOMAIN" >/dev/null 2>&1; then proto="http"; fi
-  run_cmd "feroxbuster -u '${proto}://$DOMAIN' -w '$WORDLIST_DIR/common.txt' -t 30 -o '$OUTPUT_DIR/dirs/ferox_${DOMAIN}.txt' || true"
-  ok "feroxbuster scan done"
-  if command -v dirsearch >/dev/null 2>&1; then
-    run_cmd "python3 ~/dirsearch/dirsearch.py -u '${proto}://$DOMAIN' -w '$WORDLIST_DIR/dir_medium.txt' -t 20 -o '$OUTPUT_DIR/dirs/dirsearch_root.txt' || true"
-    ok "dirsearch (local) run complete"
-  fi
 fi
 
 # ===== Screenshots =====
 section "📸 Capturing Screenshots"
 if command -v gowitness >/dev/null 2>&1; then
-  run_cmd "gowitness scan file -f '$OUTPUT_DIR/subdomains/live.txt' --write-db '$OUTPUT_DIR/screenshots' --timeout 10"
+  gowitness scan file -f  "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 
   ok "Screenshots saved to $OUTPUT_DIR/screenshots"
 fi
+
+# ===== Directory Fuzzing =====
+if [[ "$MODE" == "full" ]]; then
+  section "📂 Directory Fuzzing"
+  for port in $(cat $OUTPUT_DIR/ports/naabu.txt); do
+    ffuf -u http://$DOMAIN:$port/FUZZ -w $WORDLIST_DIR/common.txt -t 150 -o $OUTPUT_DIR/dirs/ffuf_$port.json
+  done
+  gobuster dir -u https://$DOMAIN -w $WORDLIST_DIR/common.txt -t 100 -o $OUTPUT_DIR/dirs/gobuster-$DOMAIN.txt
+  proto="https"
+  if ! curl -Is --max-time 5 "https://$DOMAIN" >/dev/null 2>&1; then proto="http"; fi
+  run_cmd "feroxbuster -u '${proto}://$DOMAIN' -w '$WORDLIST_DIR/common.txt' -t 30 -o '$OUTPUT_DIR/dirs/ferox_${DOMAIN}.txt' || true"
+  ok "feroxbust  er scan done"
+  if command -v dirsearch >/dev/null 2>&1; then
+    run_cmd "python3 ~/dirsearch/dirsearch.py -u '${proto}://$DOMAIN' -t 50 -o '$OUTPUT_DIR/dirs/dirsearch_root.txt' || true"
+    ok "dirsearch (local) run complete"
+  fi
+fi
+
+# ===== Extracting potential parameters =====
+echo "[+] Extracting potential parameters..."
+cat $OUTPUT/params/all_urls.txt | gf xss > $OUTPUT_DIR/params/xss.txt &
+cat $OUTPUT/params/all_urls.txt | gf sqli > $OUTPUT_DIR/params/sqli.txt &
+cat $OUTPUT/params/all_urls.txt | gf lfi > $OUTPUT_DIR/params/lfi.txt &
+cat $OUTPUT/params/all_urls.txt | gf ssrf > $OUTPUT_DIR/params/ssrf.txt &
+wait
 
 # ===== S3 Bucket Enumeration =====
 section "🪣 S3 Bucket Enumeration"
