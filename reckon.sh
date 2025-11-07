@@ -159,17 +159,75 @@ fi
 
 # ===== JS Secret & Params =====
 if [[ "$MODE" != "fast" ]]; then
-  section "🔑 JS Secret Discovery"
-  touch "$OUTPUT_DIR/secrets/found.txt"
-  run_cmd "grep -Eoi '\\.js(\\?|$)' '$OUTPUT_DIR/urls/all.txt' | sed 's/^[^h]*//' | sort -u > '$OUTPUT_DIR/temp/js_urls.txt'"
-  while IFS= read -r jsu; do
-    f="$OUTPUT_DIR/secrets/$(echo -n "$jsu" | md5sum | awk '{print $1}').js"
-    run_cmd "curl -sSfL '$jsu' -m 10 -o '$f' || true"
-  done < <(head -n 50 "$OUTPUT_DIR/temp/js_urls.txt")
-  run_cmd "grep -ErohI 'AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}' '$OUTPUT_DIR/secrets' > '$OUTPUT_DIR/secrets/found.txt' || true"
-  s_count=$(wc -l < "$OUTPUT_DIR/secrets/found.txt" 2>/dev/null || echo 0)
-  ((s_count>0)) && warn "Secrets found: $s_count" || ok "No secrets found"
-fi
+  # ===== Robust JS extraction & secret hunting (replace previous fragile block) =====
+  section "🔑 JS Secret Discovery (robust)"
+  
+  ALL_URLS_FILE="$OUTPUT_DIR/urls/all.txt"
+  JS_URLS_FILE="$OUTPUT_DIR/temp/js_urls.txt"
+  JS_STORE="$OUTPUT_DIR/secrets/jsfiles"
+  FOUND_SECRETS="$OUTPUT_DIR/secrets/found.txt"
+  
+  # Ensure outputs/dirs exist and placeholders to avoid "no such file" later
+  mkdir -p "$JS_STORE"
+  touch "$FOUND_SECRETS" "$JS_URLS_FILE"
+  
+  # 1) Make sure we have URLs to work with
+  if [ ! -s "$ALL_URLS_FILE" ]; then
+    warn "No URLs file found at $ALL_URLS_FILE — skipping JS discovery."
+  else
+    info "Extracting JS URLs from $ALL_URLS_FILE"
+  
+    # 2) Extract full JS URLs (supports query strings, fragments), dedupe
+    #    This grabs http/https links that end with .js or contain .js? or .js#
+    #    It also tries to catch inline links like //cdn.example/file.js
+    grep -Eo '(https?:)?//[^"'\''<>[:space:]]+\.js([?/#][^"'\''<>[:space:]]*)?' "$ALL_URLS_FILE" \
+      | sed -E 's/^\/\///; s/^:?\/\///; s/^\/\///' \
+      | sed -E 's/^([^h].*)$/http:\/\/\1/' \
+      | sort -u > "$JS_URLS_FILE" || true
+  
+    # 3) If above produced nothing, try fallback: find any line with ".js" and try to extract a URL-ish piece
+    if [ ! -s "$JS_URLS_FILE" ]; then
+      warn "No explicit JS URLs found via regex — falling back to looser extraction (may be noisy)"
+      grep -i '\.js' "$ALL_URLS_FILE" | grep -Eo 'https?://[^ ]+|//[^ ]+' | sed 's#^//#http://#' | sort -u >> "$JS_URLS_FILE" || true
+    fi
+  
+    js_count_total=$(wc -l < "$JS_URLS_FILE" 2>/dev/null || echo 0)
+    if [ "$js_count_total" -eq 0 ]; then
+      warn "No JS files discovered (0 entries). Skipping download."
+    else
+      ok "Found $js_count_total unique JS URLs (will download up to first 200)"
+  
+      # 4) Limit download set (change head -n 200 if you want more)
+      head -n 200 "$JS_URLS_FILE" > "$JS_URLS_FILE.tmp" && mv "$JS_URLS_FILE.tmp" "$JS_URLS_FILE"
+  
+      # 5) Download in parallel (10 workers) and save as md5-named .js files
+      #    Each curl has a 12s timeout and will skip on error (|| true)
+      export OUT="$JS_STORE"
+      cat "$JS_URLS_FILE" | xargs -I{} -P 10 bash -c '
+        url="$1"
+        outdir="$OUT"
+        fname="$(echo -n "$url" | md5sum | awk "{print \$1}").js"
+        # Save quietly or show details depending on verbose
+        if '"$VERBOSE"'; then
+          echo "→ curl -sSfL \"$url\" -m 12 -o \"$outdir/$fname\" || true"
+          curl -sSfL "$url" -m 12 -o "$outdir/$fname" || true
+        else
+          curl -sSfL "$url" -m 12 -o "$outdir/$fname" 2>/dev/null || true
+        fi
+      ' _ {}
+  
+      # 6) Hunt for tokens/patterns (AWS keys, Google API, GitHub tokens, Slack, JWTs, private keys)
+      grep -Eroh "AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]+|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----" "$JS_STORE" 2>/dev/null \
+        | sort -u > "$FOUND_SECRETS" || true
+  
+      found_count=$(wc -l < "$FOUND_SECRETS" 2>/dev/null || echo 0)
+      if [ "$found_count" -gt 0 ]; then
+        warn "⚠️  Found $found_count potential secrets in JS files (saved to $FOUND_SECRETS)"
+      else
+        ok "No secrets found in JS files"
+      fi
+    fi
+  fi
 
 # ===== Vulnerability Scan =====
 if [[ "$MODE" != "fast" ]]; then
