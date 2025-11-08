@@ -129,6 +129,7 @@ ok "Wordlists ready in $WORDLIST_DIR"
 
 # ===== Subdomain Enumeration =====
 section "🔍 Subdomain Enumeration"
+
 # Run subdomain finders in parallel
 subfinder -silent -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/subfinder.txt" &
 assetfinder --subs-only "$DOMAIN" > "$OUTPUT_DIR/subdomains/assetfinder.txt" &
@@ -136,14 +137,14 @@ amass enum -passive -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/amass.txt" &
 wait
 
 # ===== Merge & Clean safely =====
+TMP_MERGED="$OUTPUT_DIR/temp/merged_subs.txt"
 ALL_SUBS="$OUTPUT_DIR/subdomains/all_subs.txt"
-TMP_MERGED="$OUTPUT_DIR/subdomains/merged_tmp.txt"
 
-# Create temp file and ensure cleanup
+mkdir -p "$OUTPUT_DIR/temp"
 : > "$TMP_MERGED"
 : > "$ALL_SUBS"
 
-# Collect available result files
+# Collect subdomain result files, excluding our own temp file
 shopt -s nullglob
 sub_files=( "$OUTPUT_DIR/subdomains"/*.txt )
 shopt -u nullglob
@@ -153,7 +154,8 @@ if [ ${#sub_files[@]} -eq 0 ]; then
   echo "$DOMAIN" > "$TMP_MERGED"
 else
   for f in "${sub_files[@]}"; do
-    if [ -s "$f" ]; then
+    # skip the file if it’s our temp file or empty
+    if [ -s "$f" ] && [[ "$f" != "$TMP_MERGED" ]]; then
       echo "  → merging: $(basename "$f")"
       cat "$f" >> "$TMP_MERGED"
       echo >> "$TMP_MERGED"
@@ -161,7 +163,7 @@ else
   done
 fi
 
-# Clean: remove leading dots, uppercase, invalid lines, duplicates
+# Normalize & clean
 cat "$TMP_MERGED" \
   | sed -e 's/^\.*//' -e 's/\r$//' \
   | tr '[:upper:]' '[:lower:]' \
