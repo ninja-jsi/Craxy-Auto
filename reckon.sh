@@ -136,8 +136,8 @@ wait
 
 # Merge and clean all subdomains
 cat "$OUTPUT_DIR"/subdomains/*.txt 2>/dev/null \
-  | sed 's/^\.*//' \                # remove leading dots
-  | grep -E '^[a-zA-Z0-9.-]+\.[a-z]{2,}$' \  # keep only valid FQDNs
+  | sed 's/^\.*//' \                
+  | grep -E '^[a-zA-Z0-9.-]+\.[a-z]{2,}$' \  
   | sort -u > "$OUTPUT_DIR/subdomains/all_subs.txt"
 
 total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all_subs.txt" || echo 0)
