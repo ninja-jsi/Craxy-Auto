@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# reckon.sh — v3 final: clean interface + dividers + modern tool support
+# reckon.sh — v3 fixed and final
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -96,9 +96,7 @@ if ((${#essential_missing[@]})); then
   warn "Essential tools missing — cannot continue."
   for t in "${essential_missing[@]}"; do echo "   • $t"; done
   echo
-  echo "Install manually, e.g.:"
-  echo "  sudo apt install -y git curl wget jq unzip python3"
-  die "Exiting — install essentials and re-run."
+  die "Install essentials manually and re-run."
 fi
 
 if ((${#optional_missing[@]})); then
@@ -108,12 +106,11 @@ if ((${#optional_missing[@]})); then
 fi
 ok "All essential tools available. Proceeding..."
 
-mkdir -p "$OUTPUT_DIR"/{subdomains,urls,params,secrets,dirs,ports,reports,screenshots,temp,s3}
+mkdir -p "$OUTPUT_DIR"/{subdomains,urls,params,secrets,dirs,ports,reports,screenshots,temp,s3,scans}
 mkdir -p "$WORDLIST_DIR"
 
 # ===== Wordlists =====
 section "📜 Wordlist Setup"
-
 declare -A WL=(
   [common]="https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt"
   [dir_medium]="https://raw.githubusercontent.com/danielmiessler/SecLists/refs/heads/master/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt"
@@ -132,168 +129,97 @@ ok "Wordlists ready in $WORDLIST_DIR"
 
 # ===== Subdomain Enumeration =====
 section "🔍 Subdomain Enumeration"
-# run_cmd "subfinder -silent -d '$DOMAIN' -o '$OUTPUT_DIR/temp/subfinder.txt'"
-# run_cmd "assetfinder --subs-only '$DOMAIN' > '$OUTPUT_DIR/temp/assetfinder.txt'"
-# run_cmd "curl -s 'https://crt.sh/?q=%25.$DOMAIN&output=json' | jq -r '.[].name_value' | sed 's/\\*\\.//g' > '$OUTPUT_DIR/temp/crtsh.txt'"
-
-# run_cmd "cat '$OUTPUT_DIR/temp'/*.txt 2>/dev/null | sed 's/^\\.*//;s/\\s//g' | tr '[:upper:]' '[:lower:]' | grep -E '^[a-z0-9._-]+\\.[a-z]{2,}$' | sort -u > '$OUTPUT_DIR/subdomains/all.txt'"
-subfinder -silent -d $DOMAIN -o $OUTPUT_DIR/subdomains/subfinder.txt &
-assetfinder --subs-only $DOMAIN | tee $OUTPUT_DIR/subdomains/assetfinder.txt &
-amass enum -passive -d $DOMAIN -o $OUTPUT_DIR/subdomains/amass.txt &
+subfinder -silent -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/subfinder.txt" &
+assetfinder --subs-only "$DOMAIN" > "$OUTPUT_DIR/subdomains/assetfinder.txt" &
+amass enum -passive -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/amass.txt" &
 wait
 
-cat $OUTPUT_DIR/subdomains/*.txt | sort -u > $OUTPUT_DIR/subdomains/all_subs.txt
+# Merge and clean all subdomains
+cat "$OUTPUT_DIR"/subdomains/*.txt 2>/dev/null \
+  | sed 's/^\.*//' \                # remove leading dots
+  | grep -E '^[a-zA-Z0-9.-]+\.[a-z]{2,}$' \  # keep only valid FQDNs
+  | sort -u > "$OUTPUT_DIR/subdomains/all_subs.txt"
 
 total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all_subs.txt" || echo 0)
 ok "Subdomains found: $total_subs"
 
 # ===== Live Host Detection =====
 section "🌐 Live Host Detection"
-# run_cmd "dnsx -l '$OUTPUT_DIR/subdomains/all.txt' -v > '$OUTPUT_DIR/subdomains/resolved.txt'"
-# run_cmd "httpx -l '$OUTPUT_DIR/subdomains/resolved.txt' -v > '$OUTPUT_DIR/subdomains/live.txt'"
-cat $OUTPUT_DIR/subdomains/all_subs.txt | httpx -silent -o $OUTPUT_DIR/subdomains/live_subs.txt
-cat $OUTPUT_DIR/subdomains/all_subs.txt | dnsx  -silent -o $OUTPUT_DIR/subdomains/resolved.txt
-live_count=$(wc -l < "$OUTPUT_DIR/subdomains/live_subs.txt" || echo 0)
+
+info "Resolving valid subdomains..."
+dnsx -silent -l "$OUTPUT_DIR/subdomains/all_subs.txt" -o "$OUTPUT_DIR/subdomains/resolved.txt" || true
+
+info "Probing live hosts..."
+httpx -silent -l "$OUTPUT_DIR/subdomains/resolved.txt" \
+  -threads 100 -follow-redirects -status-code -title -probe \
+  -o "$OUTPUT_DIR/subdomains/live_subs.txt" || true
+
 resolved_count=$(wc -l < "$OUTPUT_DIR/subdomains/resolved.txt" || echo 0)
-ok "Live web hosts: $live_count"
-ok "Resolved web hosts: $resolved_count"
+live_count=$(wc -l < "$OUTPUT_DIR/subdomains/live_subs.txt" || echo 0)
 
-# ===== Port Scanning with Naabu =====
-echo "[+] Port scanning with Naabu..."
-sed -i 's#^https\?://##' $OUTPUT_DIR/subdomains/live_subs.txt
-naabu -list $OUTPUT_DIR/subdomains/live_subs.txt -p 0-65535 -rate 20000 -o $OUTPUT_DIR/ports/naabu.txt &
+echo
+echo "───────────────"
+ok "Resolved: $resolved_count"
+ok "Live: $live_count"
+echo "───────────────"
 
-# ===== Service Detection with Nmap =====
-echo "[+] Service detection with Nmap..."
-nmap -T4 -sC -sV -iL $OUTPUT_DIR/subdomains/live_subs.txt -oN $OUTPUT_DIR/scans/nmap.txt &
+# ===== Port Scan =====
+section "🔌 Port Scan (Naabu + Nmap)"
+sed -i 's#^https\?://##' "$OUTPUT_DIR/subdomains/live_subs.txt"
+naabu -list "$OUTPUT_DIR/subdomains/live_subs.txt" -p 0-65535 -rate 20000 -o "$OUTPUT_DIR/ports/naabu.txt" &
+nmap -T4 -sC -sV -iL "$OUTPUT_DIR/subdomains/live_subs.txt" -oN "$OUTPUT_DIR/scans/nmap.txt" &
 wait
+ok "Port scanning complete."
 
 # ===== URL Collection =====
 if [[ "$MODE" != "fast" ]]; then
   section "🔗 URL Collection"
-  # run_cmd "cat '$OUTPUT_DIR/subdomains/live_subs.txt' | gau > '$OUTPUT_DIR/urls/gau.txt'"
-  # run_cmd "cat '$OUTPUT_DIR/subdomains/live_subs.txt' | waybackurls > '$OUTPUT_DIR/urls/wayback.txt'"
-  (cat $OUTPUT_DIR/subdomains/live_subs.txt | gau > $OUTPUT_DIR/params/gau.txt) &
-  (cat $OUTPUT_DIR/subdomains/live_subs.txt | waybackurls > $OUTPUT_DIR/params/wayback.txt) &
+  (cat "$OUTPUT_DIR/subdomains/live_subs.txt" | gau > "$OUTPUT_DIR/urls/gau.txt") &
+  (cat "$OUTPUT_DIR/subdomains/live_subs.txt" | waybackurls > "$OUTPUT_DIR/urls/wayback.txt") &
   wait
-  run_cmd "cat '$OUTPUT_DIR/urls'/*.txt 2>/dev/null | sort -u > '$OUTPUT_DIR/urls/all.txt'"
+  cat "$OUTPUT_DIR/urls"/*.txt 2>/dev/null | sort -u > "$OUTPUT_DIR/urls/all.txt"
   url_count=$(wc -l < "$OUTPUT_DIR/urls/all.txt" || echo 0)
   ok "URLs collected: $url_count"
-fi
-
-# ===== JS Secret & Params =====
-if [[ "$MODE" != "fast" ]]; then
-  # ===== Robust JS extraction & secret hunting (replace previous fragile block) =====
-  section "🔑 JS Secret Discovery (robust)"
-  
-  ALL_URLS_FILE="$OUTPUT_DIR/urls/all.txt"
-  JS_URLS_FILE="$OUTPUT_DIR/temp/js_urls.txt"
-  JS_STORE="$OUTPUT_DIR/secrets/jsfiles"
-  FOUND_SECRETS="$OUTPUT_DIR/secrets/found.txt"
-  
-  # Ensure outputs/dirs exist and placeholders to avoid "no such file" later
-  mkdir -p "$JS_STORE"
-  touch "$FOUND_SECRETS" "$JS_URLS_FILE"
-  
-  # 1) Make sure we have URLs to work with
-  if [ ! -s "$ALL_URLS_FILE" ]; then
-    warn "No URLs file found at $ALL_URLS_FILE — skipping JS discovery."
-  else
-    info "Extracting JS URLs from $ALL_URLS_FILE"
-  
-    # 2) Extract full JS URLs (supports query strings, fragments), dedupe
-    #    This grabs http/https links that end with .js or contain .js? or .js#
-    #    It also tries to catch inline links like //cdn.example/file.js
-    grep -Eo '(https?:)?//[^"'\''<>[:space:]]+\.js([?/#][^"'\''<>[:space:]]*)?' "$ALL_URLS_FILE" \
-      | sed -E 's/^\/\///; s/^:?\/\///; s/^\/\///' \
-      | sed -E 's/^([^h].*)$/http:\/\/\1/' \
-      | sort -u > "$JS_URLS_FILE" || true
-  
-    # 3) If above produced nothing, try fallback: find any line with ".js" and try to extract a URL-ish piece
-    if [ ! -s "$JS_URLS_FILE" ]; then
-      warn "No explicit JS URLs found via regex — falling back to looser extraction (may be noisy)"
-      grep -i '\.js' "$ALL_URLS_FILE" | grep -Eo 'https?://[^ ]+|//[^ ]+' | sed 's#^//#http://#' | sort -u >> "$JS_URLS_FILE" || true
-    fi
-  
-    js_count_total=$(wc -l < "$JS_URLS_FILE" 2>/dev/null || echo 0)
-    if [ "$js_count_total" -eq 0 ]; then
-      warn "No JS files discovered (0 entries). Skipping download."
-    else
-      ok "Found $js_count_total unique JS URLs (will download up to first 200)"
-  
-      # 4) Limit download set (change head -n 200 if you want more)
-      head -n 200 "$JS_URLS_FILE" > "$JS_URLS_FILE.tmp" && mv "$JS_URLS_FILE.tmp" "$JS_URLS_FILE"
-  
-      # 5) Download in parallel (10 workers) and save as md5-named .js files
-      #    Each curl has a 12s timeout and will skip on error (|| true)
-      export OUT="$JS_STORE"
-      cat "$JS_URLS_FILE" | xargs -I{} -P 10 bash -c '
-        url="$1"
-        outdir="$OUT"
-        fname="$(echo -n "$url" | md5sum | awk "{print \$1}").js"
-        # Save quietly or show details depending on verbose
-        if '"$VERBOSE"'; then
-          echo "→ curl -sSfL \"$url\" -m 12 -o \"$outdir/$fname\" || true"
-          curl -sSfL "$url" -m 12 -o "$outdir/$fname" || true
-        else
-          curl -sSfL "$url" -m 12 -o "$outdir/$fname" 2>/dev/null || true
-        fi
-      ' _ {}
-  
-      # 6) Hunt for tokens/patterns (AWS keys, Google API, GitHub tokens, Slack, JWTs, private keys)
-      grep -Eroh "AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]+|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----" "$JS_STORE" 2>/dev/null \
-        | sort -u > "$FOUND_SECRETS" || true
-  
-      found_count=$(wc -l < "$FOUND_SECRETS" 2>/dev/null || echo 0)
-      if [ "$found_count" -gt 0 ]; then
-        warn "⚠️  Found $found_count potential secrets in JS files (saved to $FOUND_SECRETS)"
-      else
-        ok "No secrets found in JS files"
-      fi
-    fi
-  fi
 fi
 
 # ===== Vulnerability Scan =====
 if [[ "$MODE" != "fast" ]]; then
   section "🚨 Vulnerability Scan (Nuclei)"
-  # run_cmd "nuclei -l '$OUTPUT_DIR/subdomains/live.txt' -silent > '$OUTPUT_DIR/reports/nuclei.txt'"
-  nuclei -l $OUTPUT_DIR/subdomains/live_subs.txt -c 50 -rl 100 -tags cves,exposures -o $OUTPUT_DIR/scans/nuclei.txt &
-  vulns=$(wc -l < "$OUTPUT_DIR/reports/nuclei.txt" || echo 0)
+  nuclei -l "$OUTPUT_DIR/subdomains/live_subs.txt" -c 50 -rl 100 -tags cves,exposures -o "$OUTPUT_DIR/scans/nuclei.txt"
+  vulns=$(wc -l < "$OUTPUT_DIR/scans/nuclei.txt" || echo 0)
   ok "Nuclei findings: $vulns"
 fi
 
 # ===== Screenshots =====
 section "📸 Capturing Screenshots"
 if command -v gowitness >/dev/null 2>&1; then
-  gowitness scan file -f  "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 
+  gowitness scan file -f "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 --threads 10
   ok "Screenshots saved to $OUTPUT_DIR/screenshots"
+else
+  warn "gowitness not found, skipping screenshots."
 fi
 
 # ===== Directory Fuzzing =====
 if [[ "$MODE" == "full" ]]; then
   section "📂 Directory Fuzzing"
-  for port in $(cat $OUTPUT_DIR/ports/naabu.txt); do
-    ffuf -u http://$DOMAIN:$port/FUZZ -w $WORDLIST_DIR/common.txt -t 150 -o $OUTPUT_DIR/dirs/ffuf_$port.json
-  done
-  gobuster dir -u https://$DOMAIN -w $WORDLIST_DIR/common.txt -t 100 -o $OUTPUT_DIR/dirs/gobuster-$DOMAIN.txt
   proto="https"
   if ! curl -Is --max-time 5 "https://$DOMAIN" >/dev/null 2>&1; then proto="http"; fi
   run_cmd "feroxbuster -u '${proto}://$DOMAIN' -w '$WORDLIST_DIR/common.txt' -t 30 -o '$OUTPUT_DIR/dirs/ferox_${DOMAIN}.txt' || true"
-  ok "feroxbust  er scan done"
+  ok "feroxbuster scan done"
   if command -v dirsearch >/dev/null 2>&1; then
-    run_cmd "python3 ~/dirsearch/dirsearch.py -u '${proto}://$DOMAIN' -t 50 -o '$OUTPUT_DIR/dirs/dirsearch_root.txt' || true"
-    ok "dirsearch (local) run complete"
+    run_cmd "python3 ~/dirsearch/dirsearch.py -u '${proto}://$DOMAIN' -w '$WORDLIST_DIR/dir_medium.txt' -t 20 -o '$OUTPUT_DIR/dirs/dirsearch_root.txt' || true"
+    ok "dirsearch run complete"
   fi
 fi
 
 # ===== Extracting potential parameters =====
-echo "[+] Extracting potential parameters..."
-cat $OUTPUT/params/all_urls.txt | gf xss > $OUTPUT_DIR/params/xss.txt &
-cat $OUTPUT/params/all_urls.txt | gf sqli > $OUTPUT_DIR/params/sqli.txt &
-cat $OUTPUT/params/all_urls.txt | gf lfi > $OUTPUT_DIR/params/lfi.txt &
-cat $OUTPUT/params/all_urls.txt | gf ssrf > $OUTPUT_DIR/params/ssrf.txt &
+section "🧩 Parameter Extraction"
+cat "$OUTPUT_DIR/urls/all.txt" | gf xss > "$OUTPUT_DIR/params/xss.txt" &
+cat "$OUTPUT_DIR/urls/all.txt" | gf sqli > "$OUTPUT_DIR/params/sqli.txt" &
+cat "$OUTPUT_DIR/urls/all.txt" | gf lfi > "$OUTPUT_DIR/params/lfi.txt" &
+cat "$OUTPUT_DIR/urls/all.txt" | gf ssrf > "$OUTPUT_DIR/params/ssrf.txt" &
 wait
+ok "Parameter extraction complete."
 
 # ===== S3 Bucket Enumeration =====
 section "🪣 S3 Bucket Enumeration"
@@ -312,7 +238,7 @@ section "📊 Recon Summary"
 END_TS=$(date +%s)
 DUR=$((END_TS-START_TS)); MIN=$((DUR/60)); SEC=$((DUR%60))
 urls=$(wc -l < "$OUTPUT_DIR/urls/all.txt" 2>/dev/null || echo 0)
-vulns=$(wc -l < "$OUTPUT_DIR/reports/nuclei.txt" 2>/dev/null || echo 0)
+vulns=$(wc -l < "$OUTPUT_DIR/scans/nuclei.txt" 2>/dev/null || echo 0)
 ok "Target: $DOMAIN"
 echo "Mode: $MODE"
 echo "Duration: ${MIN}m ${SEC}s"
