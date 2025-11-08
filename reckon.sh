@@ -129,19 +129,49 @@ ok "Wordlists ready in $WORDLIST_DIR"
 
 # ===== Subdomain Enumeration =====
 section "🔍 Subdomain Enumeration"
+# Run subdomain finders in parallel
 subfinder -silent -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/subfinder.txt" &
 assetfinder --subs-only "$DOMAIN" > "$OUTPUT_DIR/subdomains/assetfinder.txt" &
 amass enum -passive -d "$DOMAIN" -o "$OUTPUT_DIR/subdomains/amass.txt" &
 wait
 
-# Merge and clean all subdomains
-cat "$OUTPUT_DIR"/subdomains/*.txt 2>/dev/null \
-  | sed 's/^\.*//' \                
-  | grep -E '^[a-zA-Z0-9.-]+\.[a-z]{2,}$' \  
-  | sort -u > "$OUTPUT_DIR/subdomains/all_subs.txt"
+# ===== Merge & Clean safely =====
+ALL_SUBS="$OUTPUT_DIR/subdomains/all_subs.txt"
+TMP_MERGED="$OUTPUT_DIR/subdomains/merged_tmp.txt"
 
-total_subs=$(wc -l < "$OUTPUT_DIR/subdomains/all_subs.txt" || echo 0)
-ok "Subdomains found: $total_subs"
+# Create temp file and ensure cleanup
+: > "$TMP_MERGED"
+: > "$ALL_SUBS"
+
+# Collect available result files
+shopt -s nullglob
+sub_files=( "$OUTPUT_DIR/subdomains"/*.txt )
+shopt -u nullglob
+
+if [ ${#sub_files[@]} -eq 0 ]; then
+  warn "No subdomain files found in $OUTPUT_DIR/subdomains. Creating placeholder."
+  echo "$DOMAIN" > "$TMP_MERGED"
+else
+  for f in "${sub_files[@]}"; do
+    if [ -s "$f" ]; then
+      echo "  → merging: $(basename "$f")"
+      cat "$f" >> "$TMP_MERGED"
+      echo >> "$TMP_MERGED"
+    fi
+  done
+fi
+
+# Clean: remove leading dots, uppercase, invalid lines, duplicates
+cat "$TMP_MERGED" \
+  | sed -e 's/^\.*//' -e 's/\r$//' \
+  | tr '[:upper:]' '[:lower:]' \
+  | sed 's#https\?://##g' \
+  | sed 's#/.*$##' \
+  | grep -E '^[a-z0-9.-]+\.[a-z]{2,}$' \
+  | sort -u > "$ALL_SUBS"
+
+total_subs=$(wc -l < "$ALL_SUBS" 2>/dev/null || echo 0)
+ok "Merged and cleaned → $total_subs unique subdomains saved to: $ALL_SUBS"
 
 # ===== Live Host Detection =====
 section "🌐 Live Host Detection"
