@@ -225,7 +225,8 @@ fi
 # ===== Screenshots =====
 section "📸 Capturing Screenshots"
 if command -v gowitness >/dev/null 2>&1; then
-  gowitness scan file -f "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 --threads 10
+  # gowitness scan file -f "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 --threads 10
+  python3 /root/Eyewitness/Python/EyeWitness.py -f "$OUTPUT_DIR/subdomains/live_subs.txt" -d "$OUTPUT_DIR/screenshots"
   ok "Screenshots saved to $OUTPUT_DIR/screenshots"
 else
   warn "gowitness not found, skipping screenshots."
@@ -253,17 +254,17 @@ cat "$OUTPUT_DIR/urls/all.txt" | gf ssrf > "$OUTPUT_DIR/params/ssrf.txt" &
 wait
 ok "Parameter extraction complete."
 
-# ===== S3 Bucket Enumeration =====
-section "🪣 S3 Bucket Enumeration"
-touch "$OUTPUT_DIR/s3/found.txt"
-while read -r b; do
-  url="https://${b}.s3.amazonaws.com"
-  if curl -I -s --max-time 5 "$url" | grep -qE "200|403"; then
-    echo "$url" >> "$OUTPUT_DIR/s3/found.txt"
-  fi
-done < "$WORDLIST_DIR/s3.txt"
-s3c=$(wc -l < "$OUTPUT_DIR/s3/found.txt" 2>/dev/null || echo 0)
-((s3c>0)) && warn "Accessible S3 buckets: $s3c" || ok "No S3 buckets found"
+# # ===== S3 Bucket Enumeration =====
+# section "🪣 S3 Bucket Enumeration"
+# touch "$OUTPUT_DIR/s3/found.txt"
+# while read -r b; do
+#   url="https://${b}.s3.amazonaws.com"
+#   if curl -I -s --max-time 5 "$url" | grep -qE "200|403"; then
+#     echo "$url" >> "$OUTPUT_DIR/s3/found.txt"
+#   fi
+# done < "$WORDLIST_DIR/s3.txt"
+# s3c=$(wc -l < "$OUTPUT_DIR/s3/found.txt" 2>/dev/null || echo 0)
+# ((s3c>0)) && warn "Accessible S3 buckets: $s3c" || ok "No S3 buckets found"
 
 # ===== Summary =====
 section "📊 Recon Summary"
