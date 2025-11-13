@@ -27,6 +27,8 @@ HELP
   esac
 done
 
+source "~/venv/bin/activate"
+
 if [[ -z "$DOMAIN" ]]; then
   echo "Usage: $0 <domain> [mode] [-v]"
   exit 1
@@ -281,3 +283,4 @@ echo "Vulnerabilities: $vulns"
 echo "Output: $OUTPUT_DIR/"
 echo
 ok "Recon complete!"
+deactivate
