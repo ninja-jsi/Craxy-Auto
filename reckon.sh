@@ -183,7 +183,6 @@ dnsx -silent -l "$OUTPUT_DIR/subdomains/all_subs.txt" -o "$OUTPUT_DIR/subdomains
 
 info "Probing live hosts..."
 httpx -silent -l "$OUTPUT_DIR/subdomains/resolved.txt" \
-  -threads 100 -follow-redirects -status-code -title -probe \
   -o "$OUTPUT_DIR/subdomains/live_subs.txt" || true
 
 resolved_count=$(wc -l < "$OUTPUT_DIR/subdomains/resolved.txt" || echo 0)
@@ -226,7 +225,7 @@ fi
 section "📸 Capturing Screenshots"
 if command -v gowitness >/dev/null 2>&1; then
   # gowitness scan file -f "$OUTPUT_DIR/subdomains/live_subs.txt" --screenshot-path "$OUTPUT_DIR/screenshots" --timeout 10 --threads 10
-  python3 /root/Eyewitness/Python/EyeWitness.py -f "$OUTPUT_DIR/subdomains/live_subs.txt" -d "$OUTPUT_DIR/screenshots"
+  python3 "~/Eyewitness/Python/EyeWitness.py" -f "$OUTPUT_DIR/subdomains/live_subs.txt" -d "$OUTPUT_DIR/screenshots"
   ok "Screenshots saved to $OUTPUT_DIR/screenshots"
 else
   warn "gowitness not found, skipping screenshots."
